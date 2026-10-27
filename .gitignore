@@ -1,6 +1,20 @@
+# Python
 venv/
 __pycache__/
+*.pyc
+*.pyo
 .ipynb_checkpoints/
+
+# Data (large files — keep out of git)
 *.csv
 *.xlsx
+
+# Model artifacts
+*.cbm
+catboost_info/
+
+# LlamaIndex vector store cache
+storage/
+
+# Environment
 .env
