@@ -46,55 +46,80 @@ st.markdown("""
         padding: 14px;
     }
 
-    /* Chat bubble base */
+    /* Chat message row container: transparent, no outer box or double border */
     div[data-testid="stChatMessage"] {
-        padding: 0.9rem 1.25rem !important;
-        border-radius: 14px !important;
-        margin-bottom: 0.85rem !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
-        transition: all 0.2s ease-in-out;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0.4rem 0 !important;
+        margin-bottom: 0.4rem !important;
+        width: 100% !important;
     }
 
-    /* USER CHAT BUBBLE: Right Aligned */
+    /* USER CHAT: Avatar and bubble on the RIGHT */
     div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
     div[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]),
     div[aria-label="Chat message from user"] {
         flex-direction: row-reverse !important;
-        text-align: right !important;
-        margin-left: auto !important;
-        margin-right: 0 !important;
-        max-width: 78% !important;
-        background-color: #E8F5E9 !important; /* Soft botanical mint */
-        border: 1px solid #C8E6C9 !important;
-        border-bottom-right-radius: 3px !important;
+        display: flex !important;
+        justify-content: flex-start !important;
+        gap: 0.75rem !important;
     }
 
-    /* Keep user message text readable */
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"],
-    div[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
-        text-align: left !important;
+    /* User Bubble: Single clean border & background ONLY on the content */
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) div[data-testid="stChatMessageContent"] {
+        background-color: #E8F5E9 !important; /* Soft botanical mint */
+        border: 1px solid #C8E6C9 !important;
+        border-radius: 16px 4px 16px 16px !important;
+        padding: 0.75rem 1.15rem !important;
+        max-width: 78% !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
         color: #1B5E20 !important;
     }
 
-    /* BOT / ASSISTANT CHAT BUBBLE: Left Aligned */
+    /* BOT / ASSISTANT CHAT: Avatar and bubble on the LEFT */
     div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
     div[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]),
     div[aria-label="Chat message from assistant"] {
         flex-direction: row !important;
-        text-align: left !important;
-        margin-right: auto !important;
-        margin-left: 0 !important;
-        max-width: 85% !important;
-        background-color: #F8FAFB !important; /* Neutral slate surface */
-        border: 1px solid #E2E8F0 !important;
-        border-bottom-left-radius: 3px !important;
+        display: flex !important;
+        justify-content: flex-start !important;
+        gap: 0.75rem !important;
     }
 
-    /* Floating Fixed Bottom Chat Input Bar */
+    /* Assistant Bubble: Single clean border & background ONLY on the content */
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) div[data-testid="stChatMessageContent"] {
+        background-color: #F8FAFB !important; /* Neutral slate surface */
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 4px 16px 16px 16px !important;
+        padding: 0.75rem 1.15rem !important;
+        max-width: 85% !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+        color: #1E293B !important;
+    }
+
+    /* Eliminate internal child borders completely */
+    div[data-testid="stChatMessageContent"] div[data-testid="stMarkdownContainer"],
+    div[data-testid="stChatMessageContent"] p {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Fixed Bottom Bar Container */
+    div[data-testid="stBottom"] {
+        background-color: #FFFFFF !important;
+        border-top: 1px solid #E2E8F0 !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 1.25rem !important;
+        z-index: 999 !important;
+    }
     div[data-testid="stChatInput"] {
         border-radius: 24px !important;
         border: 1.5px solid #CBD5E1 !important;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07) !important;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06) !important;
         background-color: #FFFFFF !important;
     }
     div[data-testid="stChatInput"]:focus-within {
@@ -492,8 +517,9 @@ with tab2:
                     with st.expander(f"Verified Citations ({len(msg['sources'])} sources matched)", icon=":material/library_books:"):
                         st.markdown(format_sources_markdown(msg["sources"]))
 
-        # Handle user input from chat input or quick buttons
-        user_query = st.chat_input("Ask about Vetiver applications, root depth, soil shear strength, or site trials...")
+        # Handle user input from fixed bottom container or quick buttons
+        with st.bottom:
+            user_query = st.chat_input("Ask about Vetiver applications, root depth, soil shear strength, or site trials...")
         active_query = user_query or selected_prompt
 
         if active_query:
