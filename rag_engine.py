@@ -25,11 +25,17 @@ logger = logging.getLogger("vetiver.rag")
 
 def configure_settings() -> None:
     """Configure global LlamaIndex settings with Ollama LLM and Embeddings."""
+    additional_kwargs = {
+        "num_thread": config.OLLAMA_NUM_THREADS,
+        "num_predict": config.OLLAMA_NUM_PREDICT,
+    }
     Settings.llm = Ollama(
         model=config.OLLAMA_LLM_MODEL,
         base_url=config.OLLAMA_BASE_URL,
         request_timeout=config.LLM_REQUEST_TIMEOUT,
         system_prompt=config.RAG_SYSTEM_PROMPT,
+        additional_kwargs=additional_kwargs,
+        keep_alive=config.OLLAMA_KEEP_ALIVE,
     )
     Settings.embed_model = OllamaEmbedding(
         model_name=config.OLLAMA_EMBED_MODEL,

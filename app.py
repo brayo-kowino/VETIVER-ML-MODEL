@@ -206,6 +206,9 @@ with st.sidebar:
         docstore_file = os.path.join(config.STORAGE_DIR, "docstore.json")
         storage_status = "Persisted Index Available" if os.path.exists(docstore_file) else "Index Not Created"
         st.caption(f"• **Index Status:** {storage_status}")
+        st.caption(f"• **CPU Threads:** {config.OLLAMA_NUM_THREADS} allocated threads")
+        st.caption(f"• **Max Generation:** {config.OLLAMA_NUM_PREDICT} tokens")
+        st.caption(f"• **RAM Residency:** {config.OLLAMA_KEEP_ALIVE}")
         st.caption(f"• **Top-K Retrieval:** {config.RAG_SIMILARITY_TOP_K}")
         st.caption(f"• **Chunk Size / Overlap:** {config.RAG_CHUNK_SIZE} / {config.RAG_CHUNK_OVERLAP}")
         st.caption(f"• **Timeout:** {config.LLM_REQUEST_TIMEOUT}s")
