@@ -15,12 +15,29 @@ from llama_index.core import (
     load_index_from_storage,
 )
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.prompts import PromptTemplate
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 
 import config
 
 logger = logging.getLogger("vetiver.rag")
+
+# Clean, expert prompt template that eliminates repetitive "According to the dataset..." phrasing
+QA_PROMPT = PromptTemplate(
+    "You are an expert geotechnical consultant specializing in Vetiver grass (Chrysopogon zizanioides) "
+    "for soil bio-engineering and slope stabilization.\n\n"
+    "Field notes and empirical reference data:\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Directives:\n"
+    "1. Answer the question below directly, professionally, and authoritatively.\n"
+    "2. Naturally integrate relevant soil properties, root tensile characteristics, and regional field figures.\n"
+    "3. Do NOT start your answer with 'According to the dataset', 'Based on the context', or similar robotic phrases. Speak directly as the expert.\n\n"
+    "Question: {query_str}\n"
+    "Expert Answer: "
+)
 
 
 def configure_settings() -> None:
@@ -91,6 +108,7 @@ def build_query_engine(
         query_engine = index.as_query_engine(
             streaming=True,
             similarity_top_k=similarity_top_k,
+            text_qa_template=QA_PROMPT,
         )
         return query_engine, index
 

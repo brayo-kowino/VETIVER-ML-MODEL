@@ -402,7 +402,7 @@ with tab1:
 # =======================================================
 with tab2:
     st.header("Vetiver Research & Literature Assistant")
-    st.markdown("Ask natural language questions grounded in peer-reviewed geotechnical research and empirical field observations.")
+    st.markdown("Ask natural language questions about Vetiver grass performance, root reinforcement, and site applications.")
 
     # Quick prompt suggestions
     st.markdown("**Suggested Technical Prompts:**")
@@ -448,18 +448,21 @@ with tab2:
                 status_placeholder = st.empty()
 
                 try:
-                    with status_placeholder:
-                        st.caption("🌿 Searching knowledge base and generating grounded response...")
+                    status_placeholder.markdown("🧠 *Thinking...*")
 
                     streaming_response = query_engine.query(active_query)
 
                     full_response = ""
+                    first_chunk = True
                     for chunk in streaming_response.response_gen:
+                        if first_chunk:
+                            status_placeholder.empty()
+                            first_chunk = False
                         full_response += chunk
                         response_placeholder.markdown(full_response + "▌")
 
-                    response_placeholder.markdown(full_response)
                     status_placeholder.empty()
+                    response_placeholder.markdown(full_response)
 
                     # Extract source citations
                     sources = extract_source_metadata(streaming_response)
