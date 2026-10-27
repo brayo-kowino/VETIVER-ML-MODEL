@@ -1,0 +1,26 @@
+# Version control
+.git/
+.gitignore
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# CatBoost training artifacts
+catboost_info/
+
+# Tests & IDE
+.vscode/
+.idea/
+*.log
+
+# Sensitive environment files
+.env

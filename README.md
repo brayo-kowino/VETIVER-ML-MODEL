@@ -143,6 +143,39 @@ python train_model.py
 
 ---
 
+## Production Deployment (Docker & Compose)
+
+### Running with Docker Compose (Recommended)
+
+Make sure Ollama is running on your host machine, then run:
+
+```bash
+docker compose up --build -d
+```
+
+The application will be served at `http://localhost:8501`.
+
+### Building the Standalone Docker Image
+
+```bash
+# Build
+docker build -t vetiver-ai-platform .
+
+# Run (connecting to host Ollama)
+docker run -p 8501:8501 --add-host=host.docker.internal:host-gateway vetiver-ai-platform
+```
+
+---
+
+## Enterprise Features
+
+- **1-Click Engineering Report:** Export complete geotechnical assessment reports with SHAP attributions in Markdown for client deliverables.
+- **Chat History Export:** Export literature query sessions with verified source citations.
+- **Live Diagnostics:** Monitor vector storage status, chunk sizes, and model parameters directly from the UI sidebar.
+- **Instant Startups:** Vector embeddings are persisted to `storage/` and reload in sub-second time.
+
+---
+
 ## License
 
 *To be defined.*

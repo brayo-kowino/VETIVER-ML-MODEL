@@ -1,5 +1,7 @@
 import os
+import json
 import logging
+from datetime import datetime
 
 import streamlit as st
 import pandas as pd
@@ -34,13 +36,18 @@ st.markdown("""
     <style>
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] { height: 48px; border-radius: 4px 4px 0px 0px; font-weight: 500; }
-    .source-box {
-        background-color: #f7f9fa;
-        border-left: 3px solid #2e7d32;
-        padding: 8px 12px;
-        margin-top: 6px;
-        border-radius: 2px;
-        font-size: 0.88rem;
+    .stMetric {
+        background-color: #F8FAF9;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        padding: 12px;
+    }
+    .report-card {
+        background-color: #F8FAF9;
+        border-left: 4px solid #2E7D32;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin-top: 12px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -101,6 +108,76 @@ query_engine = initialize_rag()
 # --- 5. SESSION STATE ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "last_analytics_report" not in st.session_state:
+    st.session_state.last_analytics_report = None
+
+
+# --- REPORT GENERATION HELPERS ---
+def generate_suitability_report(
+    inputs: dict,
+    prediction: int,
+    probability: float,
+    exp_df: pd.DataFrame,
+) -> str:
+    """Generate a structured Markdown engineering report."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    verdict = "SUITABLE" if prediction == 1 else "UNSUITABLE"
+    conf = f"{probability:.1f}%" if prediction == 1 else f"{100 - probability:.1f}%"
+
+    lines = [
+        "# 🌿 VETIVER GEOTECHNICAL SITE SUITABILITY REPORT",
+        f"**Generated:** {timestamp}",
+        "**Assessment Standard:** Empirical Agronomic & Geotechnical Boundary Baselines",
+        "\n---",
+        "## 1. Executive Verdict",
+        f"- **System Verdict:** **{verdict}**",
+        f"- **Confidence Level:** {conf}",
+        f"- **Risk Level:** {'Low Geotechnical Risk' if prediction == 1 else 'High Failure Risk'}",
+        "\n## 2. Configured Site Parameters",
+        f"- **Soil Type / Structure:** `{inputs['Soil type/structure']}`",
+        f"- **Climate Regime:** `{inputs['climate']}`",
+        f"- **Watering Regime:** `{inputs['watering regime']}`",
+        f"- **Salinity Level:** `{inputs['salinity']}`",
+        f"- **Intended Application:** `{inputs['Application']}`",
+        "\n## 3. TreeSHAP Feature Attributions",
+        "The table below indicates the mathematical contribution of each site condition to the final verdict:\n",
+        "| Site Parameter | Input Value | SHAP Impact (Log-Odds) | Directional Effect |",
+        "| :--- | :--- | :--- | :--- |",
+    ]
+    for _, row in exp_df.iterrows():
+        lines.append(f"| {row['Feature']} | {row['Input Value']} | {row['SHAP Impact']:+.4f} | {row['Effect']} |")
+
+    lines.extend([
+        "\n## 4. Engineering Recommendations",
+        "- **Establishment Protocol:** Ensure initial moisture during the first 30–60 days before mature root network anchoring."
+        if prediction == 1 else
+        "- **Mitigation Protocol:** Extreme soil compaction, solid bedrock refusal, or hyper-salinity detected. Pre-treatment or mechanical retaining recommended.",
+        "- **Monitoring:** Inspect root development and contour hedgerow density at 6 and 12-month intervals.",
+        "\n---",
+        "*Report compiled by Vetiver AI Decision Support Platform.*"
+    ])
+    return "\n".join(lines)
+
+
+def export_chat_markdown(messages: list) -> str:
+    """Format full chat history with citations into an exportable Markdown file."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [
+        "# 🌿 Vetiver Literature & Knowledge Chat Session",
+        f"**Exported:** {timestamp}\n",
+        "---",
+    ]
+    for idx, msg in enumerate(messages, 1):
+        role_label = "User" if msg["role"] == "user" else "Vetiver AI"
+        lines.append(f"\n### {idx}. {role_label}")
+        lines.append(msg["content"])
+        if msg.get("sources"):
+            lines.append(f"\n> **Citations ({len(msg['sources'])} matched sources):**")
+            for s in msg["sources"]:
+                score_str = f" [Score: {s['score']:.3f}]" if s.get("score") is not None else ""
+                lines.append(f"> - `{s['file_name']}`{score_str}: \"{s['snippet']}...\"")
+    return "\n".join(lines)
+
 
 # --- 6. SIDEBAR BRANDING & HEALTH ---
 with st.sidebar:
@@ -123,13 +200,35 @@ with st.sidebar:
         st.warning("Language Model: Offline (Check knowledge base)")
 
     st.divider()
+
+    # System Diagnostics Expander
+    with st.expander("🛠️ System Diagnostics & Storage"):
+        docstore_file = os.path.join(config.STORAGE_DIR, "docstore.json")
+        storage_status = "Persisted Index Available" if os.path.exists(docstore_file) else "Index Not Created"
+        st.caption(f"• **Index Status:** {storage_status}")
+        st.caption(f"• **Top-K Retrieval:** {config.RAG_SIMILARITY_TOP_K}")
+        st.caption(f"• **Chunk Size / Overlap:** {config.RAG_CHUNK_SIZE} / {config.RAG_CHUNK_OVERLAP}")
+        st.caption(f"• **Timeout:** {config.LLM_REQUEST_TIMEOUT}s")
+        st.caption(f"• **Model Features:** {len(config.CATEGORICAL_FEATURES)} categorical variables")
+
+    st.divider()
     st.markdown("### Model Specifications")
     st.caption(
         "• **Algorithm:** Gradient Boosted Trees (CatBoost)\n"
         "• **Validation:** 5-Fold Stratified Cross-Validation (89.7% Mean Acc)\n"
-        "• **Explainability:** TreeSHAP Attributions\n"
+        "• **Explainability:** Native TreeSHAP Attributions\n"
         "• **Knowledge Engine:** LlamaIndex Vector RAG + Qwen 2.5 3B"
     )
+
+    if st.session_state.messages:
+        chat_md = export_chat_markdown(st.session_state.messages)
+        st.download_button(
+            label="📥 Export Chat Session (.md)",
+            data=chat_md,
+            file_name=f"vetiver_chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
 
     if st.button("Clear Chat History", use_container_width=True):
         st.session_state.messages = []
@@ -222,17 +321,26 @@ with tab1:
 
     if st.button("Run Geotechnical Analytics", type="primary", use_container_width=True):
         if cb_model:
-            input_data = pd.DataFrame({
-                "Soil type/structure": [soil_type],
-                "climate": [climate],
-                "watering regime": [watering],
-                "Application": [application],
-                "salinity": [salinity],
-            })
+            input_dict = {
+                "Soil type/structure": soil_type,
+                "climate": climate,
+                "watering regime": watering,
+                "Application": application,
+                "salinity": salinity,
+            }
+            input_data = pd.DataFrame({k: [v] for k, v in input_dict.items()})
 
-            prediction = cb_model.predict(input_data)[0]
-            probability = cb_model.predict_proba(input_data)[0][1] * 100
+            with st.spinner("Executing CatBoost classification and calculating TreeSHAP attributions..."):
+                prediction = cb_model.predict(input_data)[0]
+                probability = cb_model.predict_proba(input_data)[0][1] * 100
+                explanation = explain_prediction(cb_model, input_data)
+                exp_df = explanation["explanation_df"]
 
+                # Cache report in session state
+                report_md = generate_suitability_report(input_dict, prediction, probability, exp_df)
+                st.session_state.last_analytics_report = report_md
+
+            st.toast("Analytics execution complete!", icon="✅")
             st.divider()
 
             # Metric Scorecards
@@ -249,11 +357,8 @@ with tab1:
                 st.error("⚠️ **Assessment Warning:** Site conditions match known agronomic failure or geotechnical boundary limits.")
 
             # SHAP Local Attribution
-            st.subheader("🔍 Decision Explainability (SHAP Feature Attribution)")
+            st.subheader("🔍 Decision Explainability (TreeSHAP Feature Attribution)")
             st.caption("Quantifies the exact mathematical contribution of each parameter toward the final verdict.")
-
-            explanation = explain_prediction(cb_model, input_data)
-            exp_df = explanation["explanation_df"]
 
             # Visual bar chart of SHAP impacts
             chart_data = exp_df.set_index("Feature")["SHAP Impact"]
@@ -270,6 +375,14 @@ with tab1:
                 },
                 hide_index=True,
                 use_container_width=True,
+            )
+
+            # Exportable Engineering Report
+            st.download_button(
+                label="📄 Download Full Geotechnical Report (.md)",
+                data=report_md,
+                file_name=f"vetiver_site_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                mime="text/markdown",
             )
 
             # Global SHAP plot expander
@@ -312,7 +425,6 @@ with tab2:
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-                # Display source citations if attached
                 if msg.get("sources"):
                     with st.expander(f"📚 Verified Citations ({len(msg['sources'])} sources matched)"):
                         st.markdown(format_sources_markdown(msg["sources"]))
@@ -334,7 +446,7 @@ with tab2:
 
                 try:
                     with status_placeholder:
-                        st.caption("🌿 Querying knowledge base and generating grounded response...")
+                        st.caption("🌿 Searching knowledge base and generating grounded response...")
 
                     streaming_response = query_engine.query(active_query)
 

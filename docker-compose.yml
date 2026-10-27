@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  vetiver-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vetiver-ai-platform
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_LLM_MODEL=qwen2.5:3b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - LLM_REQUEST_TIMEOUT=300
+      - RAG_SIMILARITY_TOP_K=3
+      - RAG_CHUNK_SIZE=512
+      - RAG_CHUNK_OVERLAP=64
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./knowledge_base:/app/knowledge_base
+      - ./storage:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
