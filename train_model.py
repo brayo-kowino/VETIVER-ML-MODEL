@@ -256,7 +256,7 @@ def generate_failure_cases() -> pd.DataFrame:
 
 def run_training():
     print("=" * 65)
-    print("🌿 VETIVER CATBOOST CLASSIFIER - ROBUST TRAINING & VALIDATION")
+    print("VETIVER CATBOOST CLASSIFIER - TRAINING & VALIDATION")
     print("=" * 65)
 
     # 1. Load empirical dataset
@@ -355,7 +355,7 @@ def run_training():
     final_model.save_model(config.MODEL_PATH)
     print("      Model saved successfully.")
     print("=" * 65)
-    print("✅ Training and validation completed successfully!\n")
+    print("Training and validation completed successfully!\n")
 
 
 if __name__ == "__main__":
