@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VETIVER AI — Failure Data Collection Guide</title>
+  <style>
+    :root {
+      --green: #1B5E20;
+      --green-mid: #2E7D32;
+      --green-light: #E8F5E9;
+      --green-border: #A5D6A7;
+      --red: #B71C1C;
+      --red-light: #FFEBEE;
+      --red-border: #EF9A9A;
+      --slate: #0F172A;
+      --muted: #475569;
+      --border: #CBD5E1;
+      --bg: #F8FAFC;
+      --white: #FFFFFF;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--slate);
+      font-size: 11pt;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 950px;
+      margin: 0 auto;
+      background: var(--white);
+      padding: 48px 52px;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      border-left: 5px solid var(--green-mid);
+      padding-left: 18px;
+      margin-bottom: 30px;
+    }
+    .header-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--green-mid);
+      margin-bottom: 6px;
+    }
+    .header h1 {
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--green);
+      line-height: 1.2;
+    }
+    .header p {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-top: 6px;
+    }
+
+    /* ── SECTION TITLES ── */
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--green);
+      border-bottom: 2px solid var(--green-border);
+      padding-bottom: 6px;
+      margin: 32px 0 16px 0;
+    }
+
+    /* ── INFO BOX ── */
+    .info-box {
+      background: var(--green-light);
+      border: 1px solid var(--green-border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 0.9rem;
+      color: var(--green);
+      margin-bottom: 24px;
+    }
+    .info-box strong { color: var(--green); }
+
+    /* ── CSV HEADER BLOCK ── */
+    .csv-block {
+      background: #1E293B;
+      color: #86EFAC;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.82rem;
+      padding: 16px 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: nowrap;
+      margin: 12px 0 28px 0;
+      letter-spacing: 0.01em;
+    }
+
+    /* ── TABLES ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin-bottom: 28px;
+    }
+    thead tr {
+      background: var(--green-mid);
+      color: #FFFFFF;
+    }
+    thead th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    tbody tr:nth-child(even) { background: #F1F5F9; }
+    tbody tr:nth-child(odd)  { background: #FFFFFF; }
+    tbody td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .col-name {
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.82rem;
+      color: var(--green);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .new-badge {
+      display: inline-block;
+      background: #DCFCE7;
+      color: var(--green);
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 100px;
+      margin-left: 6px;
+      vertical-align: middle;
+      border: 1px solid var(--green-border);
+    }
+    .required-badge {
+      display: inline-block;
+      background: #FEE2E2;
+      color: var(--red);
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 100px;
+      margin-left: 6px;
+      vertical-align: middle;
+      border: 1px solid var(--red-border);
+    }
+
+    /* Failure mode table */
+    .fm-table thead tr { background: #7F1D1D; }
+    .fm-code {
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.82rem;
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    /* Sample data table */
+    .sample-table thead tr { background: #374151; }
+    .sample-table tbody td {
+      font-size: 0.78rem;
+      font-family: "Consolas", "Courier New", monospace;
+      color: #1E293B;
+      background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      padding: 7px 10px;
+    }
+    .sample-table thead th {
+      font-size: 0.72rem;
+      padding: 8px 10px;
+    }
+    .cell-zero {
+      color: var(--red);
+      font-weight: 800;
+    }
+    .cell-good {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    /* ── TARGET BOX ── */
+    .target-box {
+      background: var(--red-light);
+      border: 1px solid var(--red-border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 0.9rem;
+      color: var(--red);
+      margin-top: 6px;
+      margin-bottom: 28px;
+    }
+    .target-box strong { color: #7F1D1D; }
+
+    /* Sources list */
+    .source-list {
+      padding-left: 20px;
+      margin-top: 8px;
+    }
+    .source-list li {
+      margin-bottom: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .source-list li strong { color: var(--slate); }
+
+    /* ── FOOTER ── */
+    .footer {
+      margin-top: 40px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── PRINT ── */
+    @media print {
+      body { background: white; }
+      .page { padding: 28px 32px; max-width: 100%; }
+      .csv-block { white-space: normal; word-break: break-all; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-tag">VETIVER AI Platform · Data & Sanitization Team</div>
+    <h1>Real Failure Data Collection Guide</h1>
+    <p>Standard column definitions, accepted values, and field instructions for collecting real negative (Suitability = 0) trial records.</p>
+  </div>
+
+  <div class="info-box">
+    <strong>Why this matters:</strong> The current model is trained on 91 field success records and 16 <em>engineered</em> failure boundaries. To make predictions trustworthy across East African conditions, we need at least 30–50 <strong>real, documented failure cases</strong> from published literature and field reports. This sheet standardises what to collect so it merges directly into training with zero reformatting.
+  </div>
+
+
+  <!-- ── SECTION 1: CSV HEADERS ── -->
+  <div class="section-title">1. Exact CSV Column Headers</div>
+  <p style="font-size:0.88rem; color:var(--muted); margin-bottom:10px;">Copy this row <strong>exactly</strong> as the first row of your Google Sheet. Column names must match character-for-character including capitalisation and spacing.</p>
+  <div class="csv-block">
+Location(country/region), Soil type/structure, Soil density, climate, watering regime, salinity, Duration since planting, Root length(cm), Application, Reference, Failure mode, Failure cause details, Suitability
+  </div>
+
+
+  <!-- ── SECTION 2: COLUMN GUIDE ── -->
+  <div class="section-title">2. Column-by-Column Field Guide</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:22%">Column Name</th>
+        <th style="width:36%">What to Record</th>
+        <th>Example Values</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-name">Location(country/region)</td>
+        <td>Country and specific region, county, or city where the trial was conducted.</td>
+        <td>Kenya (Kitengela), Ethiopia (Tigray), Tanzania (Dodoma Region), Uganda (Mbarara)</td>
+      </tr>
+      <tr>
+        <td class="col-name">Soil type/structure</td>
+        <td>Soil texture or classification exactly as described in the paper or report. Do not simplify — copy the original term.</td>
+        <td>Black cotton soils, Saline-sodic soil, Shallow rocky laterite, Sandy clay loam</td>
+      </tr>
+      <tr>
+        <td class="col-name">Soil density</td>
+        <td>Bulk density or compaction description if reported. Use NR if not reported.</td>
+        <td>1.8 g/cm³, Highly compacted, NR</td>
+      </tr>
+      <tr>
+        <td class="col-name">climate</td>
+        <td>Climate zone or rainfall regime of the site as described in the source.</td>
+        <td>Semi-arid, Arid/hyper-arid, Tropical dry, Semi-arid tropical</td>
+      </tr>
+      <tr>
+        <td class="col-name">watering regime</td>
+        <td>Water availability during the trial. For failures due to drought, record clearly (e.g. "No irrigation / rainfed drought year").</td>
+        <td>Rainfed, No irrigation, Seasonal drought, Dry season only</td>
+      </tr>
+      <tr>
+        <td class="col-name">salinity</td>
+        <td>Soil salinity reading or description. Use actual EC value in dS/m if available. Key failure threshold: EC > 12–20 dS/m.</td>
+        <td>ECe > 20 dS/m, EC = 22 dS/m, Hyper-saline, NR</td>
+      </tr>
+      <tr>
+        <td class="col-name">Duration since planting</td>
+        <td>How long the trial ran before it was reported as a failure or terminated.</td>
+        <td>3 months, 6 months, 12 weeks, NR</td>
+      </tr>
+      <tr>
+        <td class="col-name">Root length(cm)</td>
+        <td>Root penetration depth observed. Will be near zero or NR for failure cases. Record 0 if roots completely failed to penetrate.</td>
+        <td>0, &lt; 5, NR</td>
+      </tr>
+      <tr>
+        <td class="col-name">Application</td>
+        <td>What the planting was intended to achieve at the site.</td>
+        <td>Slope stabilization, Erosion control, Mine rehabilitation, Land restoration</td>
+      </tr>
+      <tr>
+        <td class="col-name">Reference</td>
+        <td>Full citation of the paper, report, or field observation. Use author-year format. For unpublished field trials, write the team name and date.</td>
+        <td>Njoroge et al. (2023), JKUAT Field Trial Report Oct 2024, KeNHA Site Audit (2022)</td>
+      </tr>
+      <tr>
+        <td class="col-name">Failure mode<span class="new-badge">NEW</span></td>
+        <td>Short category label for the type of failure. Must use one of the accepted values from Section 3 below.</td>
+        <td>Establishment failure, Salinity kill, Drought kill, Bedrock refusal</td>
+      </tr>
+      <tr>
+        <td class="col-name">Failure cause details<span class="new-badge">NEW</span></td>
+        <td>One clear sentence describing the documented reason the site failed, in your own words based on the source.</td>
+        <td>Plants failed to root due to impenetrable laterite hardpan at 8 cm depth. High salinity (EC 22 dS/m) caused complete desiccation within 6 weeks of planting.</td>
+      </tr>
+      <tr>
+        <td class="col-name">Suitability<span class="required-badge">ALWAYS = 0</span></td>
+        <td>The machine learning label. Every failure record must be exactly the number zero (0). No other value.</td>
+        <td><strong>0</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <!-- ── SECTION 3: FAILURE MODES ── -->
+  <div class="section-title">3. Accepted Failure Mode Labels</div>
+  <p style="font-size:0.88rem; color:var(--muted); margin-bottom:12px;">Use only these exact labels in the <code style="color:var(--green)">Failure mode</code> column. Consistent values are critical for model training and analysis.</p>
+  <table class="fm-table">
+    <thead>
+      <tr>
+        <th style="width:32%">Failure Mode Label</th>
+        <th>What It Means</th>
+        <th style="width:22%">Key Trigger</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="fm-code">Establishment failure</td>
+        <td>Slips germinated or were planted but never successfully rooted into the soil</td>
+        <td>Soil compaction, hard substrate</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Complete die-off</td>
+        <td>All or nearly all plants died during the trial period</td>
+        <td>Extreme heat, toxicity, drought</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Root death</td>
+        <td>Roots were initially present but collapsed or rotted before anchoring</td>
+        <td>Waterlogging, anoxic sludge</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Poor survival</td>
+        <td>Less than 30% plant survival recorded at end of trial</td>
+        <td>Combined stresses, marginal conditions</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Growth stunting</td>
+        <td>Plants remained alive but showed zero meaningful root development for slope protection</td>
+        <td>Nutrient toxicity, heavy metals</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Salinity kill</td>
+        <td>Failure directly and explicitly attributed to high electrical conductivity</td>
+        <td>EC &gt; 12–20 dS/m</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Drought kill</td>
+        <td>Failure directly attributed to water deficit during establishment</td>
+        <td>No rainfall, no irrigation</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Bedrock refusal</td>
+        <td>Roots physically unable to penetrate substrate; effective depth &lt; 15 cm</td>
+        <td>Rock, hardpan, laterite</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Frost kill</td>
+        <td>Failure due to freezing temperatures destroying plant tissue</td>
+        <td>Temperatures below −10°C</td>
+      </tr>
+      <tr>
+        <td class="fm-code">Toxicity failure</td>
+        <td>Failure due to heavy metal accumulation, acid sulfates, or chemical contamination</td>
+        <td>Mine tailings, acid soil, agrochemicals</td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <!-- ── SECTION 4: SAMPLE FILLED ROW ── -->
+  <div class="section-title">4. Sample Filled Data Rows</div>
+  <p style="font-size:0.88rem; color:var(--muted); margin-bottom:12px;">These examples show what correctly completed failure records look like:</p>
+  <div style="overflow-x:auto;">
+  <table class="sample-table">
+    <thead>
+      <tr>
+        <th>Location</th>
+        <th>Soil type</th>
+        <th>Soil density</th>
+        <th>Climate</th>
+        <th>Watering</th>
+        <th>Salinity</th>
+        <th>Duration</th>
+        <th>Root length</th>
+        <th>Application</th>
+        <th>Reference</th>
+        <th>Failure mode</th>
+        <th>Failure cause details</th>
+        <th>Suitability</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Kenya (Kajiado)</td>
+        <td>Saline-sodic clay</td>
+        <td>NR</td>
+        <td>Semi-arid</td>
+        <td>Rainfed</td>
+        <td>EC = 22 dS/m</td>
+        <td>8 weeks</td>
+        <td>0</td>
+        <td>Slope stabilization</td>
+        <td>Mumo et al. (2022)</td>
+        <td>Salinity kill</td>
+        <td>Complete plant death within 8 weeks; soil EC of 22 dS/m exceeded vetiver physiological threshold</td>
+        <td class="cell-zero">0</td>
+      </tr>
+      <tr>
+        <td>Ethiopia (Tigray)</td>
+        <td>Shallow rocky laterite</td>
+        <td>Highly compacted</td>
+        <td>Semi-arid tropical</td>
+        <td>No irrigation</td>
+        <td>NR</td>
+        <td>3 months</td>
+        <td>&lt; 3</td>
+        <td>Erosion control</td>
+        <td>EIAR Field Report (2021)</td>
+        <td>Bedrock refusal</td>
+        <td>Laterite hardpan at 8 cm depth prevented root penetration; slips remained shallow and died at first dry spell</td>
+        <td class="cell-zero">0</td>
+      </tr>
+      <tr>
+        <td>Tanzania (Dodoma)</td>
+        <td>Arid sandy soil</td>
+        <td>NR</td>
+        <td>Arid/hyper-arid</td>
+        <td>Rainfed, no supplemental water</td>
+        <td>NR</td>
+        <td>4 months</td>
+        <td>0</td>
+        <td>Land restoration</td>
+        <td>TARI Annual Review (2023)</td>
+        <td>Drought kill</td>
+        <td>Seasonal rainfall of only 180 mm recorded; plants failed to survive first dry season without supplemental irrigation during establishment</td>
+        <td class="cell-zero">0</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+
+  <!-- ── SECTION 5: WHERE TO FIND FAILURE DATA ── -->
+  <div class="section-title">5. Where to Find Real Failure Records</div>
+  <p style="font-size:0.88rem; color:var(--muted); margin-bottom:10px;">Tell your <strong>Literature Specialist</strong> to search specifically for these keywords and sources:</p>
+
+  <p style="font-size:0.88rem; font-weight:700; margin-bottom:6px; color:var(--slate);">Search Keywords (use in Google Scholar, Semantic Scholar, ResearchGate):</p>
+  <ul class="source-list">
+    <li>"Vetiver failed to establish" / "poor survival" / "plant mortality"</li>
+    <li>"Chrysopogon zizanioides unsuitable" / "trial discontinued"</li>
+    <li>"Vetiver salinity tolerance limit" / "EC threshold die-off"</li>
+    <li>"Vetiver drought stress mortality" / "water deficit establishment"</li>
+    <li>"Vetiver mine tailings failure" / "acid soil toxicity"</li>
+  </ul>
+
+  <p style="font-size:0.88rem; font-weight:700; margin: 14px 0 6px 0; color:var(--slate);">Priority Institutional Sources for East Africa:</p>
+  <ul class="source-list">
+    <li><strong>TVNI</strong> — The Vetiver Network International grey literature and site reports</li>
+    <li><strong>KALRO</strong> — Kenya Agricultural and Livestock Research Organisation field reports</li>
+    <li><strong>EIAR</strong> — Ethiopian Institute of Agricultural Research annual reviews</li>
+    <li><strong>TARI</strong> — Tanzania Agricultural Research Institute trial reports</li>
+    <li><strong>KeNHA / KURA</strong> — Kenya road embankment slope failure post-mortem audits</li>
+    <li><strong>JKUAT</strong> — Internal departmental field trial records and student theses</li>
+  </ul>
+
+  <div class="target-box">
+    <strong>Minimum collection target:</strong> 30–50 real, documented failure records before the next model retraining session. The current engineered boundaries will be replaced by real observed failures once this data is ready. Every additional failure row improves the model's ability to protect real sites from wrong advice.
+  </div>
+
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>VETIVER AI Platform — Data &amp; Sanitization Team</span>
+    <span>Jomo Kenyatta University of Agriculture and Technology (JKUAT)</span>
+  </div>
+
+</div>
+</body>
+</html>
