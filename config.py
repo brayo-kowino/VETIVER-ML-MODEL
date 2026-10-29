@@ -19,7 +19,7 @@ OLLAMA_LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5:3b")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 LLM_REQUEST_TIMEOUT = float(os.getenv("LLM_REQUEST_TIMEOUT", "300"))
 OLLAMA_NUM_THREADS = int(os.getenv("OLLAMA_NUM_THREADS", "6"))  # Utilize 6 CPU threads
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "320"))  # Limit response to ~250-300 words
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "-1"))  # -1 = no token limit; model generates until natural completion
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "24h")  # Keep model resident in RAM
 
 # ── RAG ────────────────────────────────────────────────

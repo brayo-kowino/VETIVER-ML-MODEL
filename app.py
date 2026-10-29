@@ -153,14 +153,7 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Fixed Bottom Bar Container */
-    div[data-testid="stBottom"] {
-        background-color: #FFFFFF !important;
-        border-top: 1px solid #E2E8F0 !important;
-        padding-top: 0.75rem !important;
-        padding-bottom: 1.25rem !important;
-        z-index: 999 !important;
-    }
+    /* Chat input styling — inside tab only */
     div[data-testid="stChatInput"] {
         border-radius: 24px !important;
         border: 1.5px solid #CBD5E1 !important;
@@ -405,57 +398,7 @@ tab1, tab2 = st.tabs([
 # =======================================================
 with tab1:
     st.subheader("Geotechnical Site Suitability Assessment", anchor=False)
-    st.caption("Engine 1: Supervised CatBoost Classifier (5-Fold Stratified CV: 89.7% Accuracy) • Native TreeSHAP Attribution")
-
-    # --- 1-CLICK BENCHMARK DEMO PRESETS ---
-    with st.container(border=True):
-        st.markdown("##### :material/bolt: Live Presentation Presets (1-Click Field Scenarios)")
-        st.caption("Demonstrate real-world slope stability vs. critical failure boundaries with one click:")
-        p_col1, p_col2, p_col3 = st.columns(3)
-        if p_col1.button("🌿 Road Slope (High Suitability)", use_container_width=True, icon=":material/check_circle:"):
-            st.session_state.preset_soil = "tropical hillside soil"
-            st.session_state.preset_climate = "tropical monsoon"
-            st.session_state.preset_watering = "rainfed"
-            st.session_state.preset_salinity = "Low to Non-saline"
-            st.session_state.preset_application = "Slope stabilization through root reinforcement"
-            st.session_state.current_assessment = run_assessment({
-                "Soil type/structure": "tropical hillside soil",
-                "climate": "tropical monsoon",
-                "watering regime": "rainfed",
-                "Application": "Slope stabilization through root reinforcement",
-                "salinity": "Low to Non-saline",
-            })
-            st.rerun()
-
-        if p_col2.button("⛔ Bedrock & Drought (Critical Failure)", use_container_width=True, icon=":material/cancel:"):
-            st.session_state.preset_soil = "solid bedrock"
-            st.session_state.preset_climate = "semi-arid"
-            st.session_state.preset_watering = "no water"
-            st.session_state.preset_salinity = "extreme"
-            st.session_state.preset_application = "Slope stabilization through root reinforcement"
-            st.session_state.current_assessment = run_assessment({
-                "Soil type/structure": "solid bedrock",
-                "climate": "semi-arid",
-                "watering regime": "no water",
-                "Application": "Slope stabilization through root reinforcement",
-                "salinity": "extreme",
-            })
-            st.rerun()
-
-        if p_col3.button("🧪 Mine Tailings (Industrial Stress)", use_container_width=True, icon=":material/science:"):
-            st.session_state.preset_soil = "gold mine tailings"
-            st.session_state.preset_climate = "desert arid"
-            st.session_state.preset_watering = "no water"
-            st.session_state.preset_salinity = "extreme"
-            st.session_state.preset_application = "rehabilitation of gold mine tailings"
-            st.session_state.current_assessment = run_assessment({
-                "Soil type/structure": "gold mine tailings",
-                "climate": "desert arid",
-                "watering regime": "no water",
-                "Application": "rehabilitation of gold mine tailings",
-                "salinity": "extreme",
-            })
-            st.rerun()
+    st.caption("CatBoost Classifier · 5-Fold Stratified CV · TreeSHAP Attribution")
 
     # --- CUSTOM SITE PARAMETER INPUTS ---
     with st.container(border=True):
@@ -735,9 +678,8 @@ with tab2:
                     with st.expander(f"Verified Citations ({len(msg['sources'])} sources matched)", icon=":material/library_books:"):
                         st.markdown(format_sources_markdown(msg["sources"]))
 
-        # Handle user input from fixed bottom container or quick buttons
-        with st.bottom:
-            user_query = st.chat_input("Ask about Vetiver applications, root depth, soil shear strength, or site trials...")
+        # Handle user input — chat input lives inside tab2 only
+        user_query = st.chat_input("Ask about Vetiver applications, root depth, soil shear strength, or site trials...")
         active_query = user_query or selected_prompt
 
         if active_query:
