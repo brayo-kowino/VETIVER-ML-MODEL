@@ -9,8 +9,8 @@ __pycache__/
 *.csv
 *.xlsx
 
-# Model artifacts
-*.cbm
+# Model artifacts — vetiver_model.cbm is tracked (small, 107 KB)
+# *.cbm   <-- removed so the trained model is shared with the team
 catboost_info/
 
 # LlamaIndex vector store cache
