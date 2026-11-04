@@ -3,7 +3,7 @@
 **Geotechnical Site Suitability Predictor & Literature Research Assistant**  
 Jomo Kenyatta University of Agriculture and Technology (JKUAT)
 
-> **Project Lead & Technical Lead:** Brian  
+> **Project Lead & Technical Lead:** Technical Lead (JKUAT)  
 > **Team:** 6 members — Technical & Systems Division + Data & Sanitization Division  
 > **Stack:** CatBoost · LlamaIndex · Qwen 2.5 3B · Ollama · Streamlit  
 > **GitHub:** https://github.com/brayo-kowino/VETIVER-ML-MODEL
@@ -243,7 +243,7 @@ The app opens automatically in your browser at **http://localhost:8501**.
 
 The trained model `vetiver_model.cbm` is already in the repo — you can run the app without retraining.
 
-When Brian commits new data and you have pulled it, retrain with:
+When the Technical Lead commits new data and you have pulled it, retrain with:
 
 ```bash
 python train_model.py
@@ -258,7 +258,7 @@ This runs 5-fold cross-validation, prints accuracy/F1 metrics, saves the updated
 > Read `TEAM_CHARTER.md` for the full governance rules. This is the short version.
 
 ### The Golden Rule
-**Never push directly to `main`.** All changes go through a feature branch and a Pull Request reviewed by Brian.
+**Never push directly to `main`.** All changes go through a feature branch and a Pull Request reviewed by the Technical Lead.
 
 ### Daily workflow
 
@@ -277,7 +277,7 @@ git commit -m "data: add 15 failure records from Kenya and Ethiopia"
 # 4. Push your branch to GitHub
 git push origin data/alice-failure-records
 
-# 5. Open a Pull Request on GitHub → assign Brian for review
+# 5. Open a Pull Request on GitHub → assign Technical Lead for review
 ```
 
 ### Branch naming convention
