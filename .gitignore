@@ -5,8 +5,8 @@ __pycache__/
 *.pyo
 .ipynb_checkpoints/
 
-# Data (large files — keep out of git)
-*.csv
+# Large external raw exports only — project CSVs are tracked in Git
+# (Brian commits the master dataset; team pulls to get updates)
 *.xlsx
 
 # Model artifacts — vetiver_model.cbm is tracked (small, 107 KB)
