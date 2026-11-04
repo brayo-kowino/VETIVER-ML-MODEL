@@ -96,129 +96,160 @@ VETIVER/
 
 ## Setup: Getting the Project Running on Your Machine
 
-### Prerequisites — Install these first
+> **This project uses Visual Studio Code (VS Code) as the standard IDE.** All terminal commands are run inside the VS Code integrated terminal. Follow every step in order.
 
-| Tool | Why needed | Download |
+---
+
+### Step 1 — Install Required Software
+
+Download and install all four tools before anything else:
+
+| Tool | Purpose | Download |
 |:---|:---|:---|
 | **Git** | Clone the repo and contribute code | https://git-scm.com |
-| **Python 3.11 or 3.12** | Run the application | https://www.python.org/downloads/ |
-| **Ollama** | Run Qwen 2.5 3B locally (Literature Assistant engine) | https://ollama.com |
+| **Python 3.11 or 3.12** | Run the application | https://www.python.org/downloads |
+| **Ollama** | Runs the Qwen 2.5 3B model locally | https://ollama.com |
+| **VS Code** | The project IDE — editor, terminal, Git, everything | https://code.visualstudio.com |
 
-> **Note on Python version:** The repo was developed on Python 3.14. Python 3.11 or 3.12 are recommended for team members as they have the best library compatibility with CatBoost and LlamaIndex.
-
----
-
-### Step-by-Step Setup
-
-#### Step 1 — Clone the repository
-
-Open a terminal (PowerShell on Windows, Terminal on Mac/Linux) and run:
-
-```bash
-git clone https://github.com/brayo-kowino/VETIVER-ML-MODEL.git
-cd VETIVER-ML-MODEL
-```
+> Python 3.11 or 3.12 is recommended. The project was built on 3.14 but library compatibility is best on 3.11/3.12.
 
 ---
 
-#### Step 2 — Create and activate a virtual environment
+### Step 2 — Install VS Code Extensions
 
-This keeps all project packages isolated from your system Python.
+Open VS Code → click the **Extensions** icon on the left sidebar (or press `Ctrl+Shift+X`) → search and install:
 
-**Windows (PowerShell):**
+| Extension | Publisher |
+|:---|:---|
+| `Python` | Microsoft |
+| `Pylance` | Microsoft |
+| `Jupyter` | Microsoft |
+| `GitLens` | GitKraken |
+
+---
+
+### Step 3 — Clone the Repository into VS Code
+
+1. Open VS Code
+2. Press `Ctrl+Shift+P` to open the Command Palette
+3. Type `Git: Clone` and press Enter
+4. Paste the repository URL:
+   ```
+   https://github.com/brayo-kowino/VETIVER-ML-MODEL.git
+   ```
+5. Choose a folder on your computer to save it (e.g. your Desktop or Documents)
+6. When VS Code asks *"Would you like to open the cloned repository?"* — click **Open**
+
+---
+
+### Step 4 — Open the Integrated Terminal
+
+Inside VS Code, press **`Ctrl + Backtick`** (the key above Tab) to open the integrated terminal.  
+All remaining commands are run here — do not use an external terminal.
+
+---
+
+### Step 5 — Create the Virtual Environment
+
+In the VS Code terminal, run:
+
+**Windows:**
 ```powershell
 python -m venv venv
-.\venv\Scripts\Activate.ps1
 ```
 
 **Mac / Linux:**
 ```bash
 python3 -m venv venv
-source venv/bin/activate
 ```
-
-You should see `(venv)` at the start of your terminal prompt once activated.
 
 ---
 
-#### Step 3 — Install Python dependencies
+### Step 6 — Select the venv as Your Python Interpreter
+
+1. Press `Ctrl+Shift+P`
+2. Type `Python: Select Interpreter` and press Enter
+3. Select the option that shows `venv` in its path — it will look like:
+   - Windows: `.\venv\Scripts\python.exe`
+   - Mac/Linux: `./venv/bin/python`
+
+> If `venv` does not appear in the list, click **+ Enter interpreter path** and navigate to it manually.
+
+After selecting, VS Code will automatically activate the venv in every new terminal you open in this project.
+
+---
+
+### Step 7 — Install Project Dependencies
+
+In the VS Code terminal:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-This installs: `catboost`, `streamlit`, `pandas`, `llama-index`, `python-dotenv`, `matplotlib`, and all other dependencies at the exact pinned versions.
+This installs `catboost`, `streamlit`, `pandas`, `llama-index`, `python-dotenv`, `matplotlib`, and all other dependencies at the exact pinned versions. Wait for it to complete fully.
 
 ---
 
-#### Step 4 — Set up environment variables
+### Step 8 — Set Up Environment Variables
 
-```bash
+In the VS Code terminal:
+
+```powershell
 # Windows
 copy .env.example .env
-
+```
+```bash
 # Mac / Linux
 cp .env.example .env
 ```
 
-Open `.env` in any text editor. The defaults work fine for local development — only change them if your Ollama is on a different port or machine.
+The defaults in `.env` work fine for local development. No changes needed unless Ollama is on a different port.
 
 ---
 
-#### Step 5 — Set up Ollama and pull the AI models
+### Step 9 — Pull the Ollama AI Models (one-time, needs internet)
 
-Ollama runs the Literature Assistant engine locally on your machine.
+In the VS Code terminal, run these two commands:
 
-**1. Start Ollama** (run this once; it stays running in the background):
-```bash
-ollama serve
-```
-
-**2. Pull the two required models** (one-time download, needs internet):
 ```bash
 ollama pull qwen2.5:3b
 ollama pull nomic-embed-text
 ```
 
-> `qwen2.5:3b` is about **2 GB**. `nomic-embed-text` is about **274 MB**.  
-> Run these on a good internet connection (university WiFi or home broadband). Once downloaded, everything runs offline.
+> `qwen2.5:3b` is approximately **2 GB**. `nomic-embed-text` is approximately **274 MB**.  
+> Run this on a good internet connection. Once downloaded, everything runs fully offline.
 
 ---
 
-#### Step 6 — Add the dataset files
+### Step 10 — Run the Application
 
-The dataset files (`.csv`) are **not stored in Git** (they are in `.gitignore`).  
-Brian will share them via the team Google Drive. Place them as follows:
-
-```
-data/vetiver_growth_data.csv          ← Training data
-knowledge_base/vetiver_growth_data.csv ← Same file, copy it here too for the RAG assistant
-```
-
----
-
-#### Step 7 — Train the model (or use the pre-trained one)
-
-The trained model file `vetiver_model.cbm` is already in the repo — you can skip this step and go straight to running the app.
-
-If you want to retrain from scratch (e.g. after adding new data):
+**1. Start Ollama** — open a second VS Code terminal (click the `+` icon in the terminal panel) and run:
 ```bash
-python train_model.py
+ollama serve
 ```
+Leave this terminal running in the background.
 
-This runs 5-fold cross-validation, prints accuracy/F1 metrics, saves the model, and generates the SHAP summary plot.
-
----
-
-#### Step 8 — Run the application
-
-Make sure Ollama is running (`ollama serve` in a separate terminal), then:
-
+**2. Start the app** — in your first terminal, run:
 ```bash
 streamlit run app.py
 ```
 
-The app opens automatically at **http://localhost:8501** in your browser.
+The app opens automatically in your browser at **http://localhost:8501**.
+
+---
+
+## Retraining the Model (after new data is added)
+
+The trained model `vetiver_model.cbm` is already in the repo — you can run the app without retraining.
+
+When Brian commits new data and you have pulled it, retrain with:
+
+```bash
+python train_model.py
+```
+
+This runs 5-fold cross-validation, prints accuracy/F1 metrics, saves the updated model, and regenerates the SHAP summary plot.
 
 ---
 
