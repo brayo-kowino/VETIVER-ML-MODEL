@@ -19,13 +19,9 @@ from geotechnical_engine import calculate_slope_stability, calculate_field_boq
 
 
 def sync_coordinate_inputs(latitude: float, longitude: float) -> None:
-    """Synchronize coordinate state and widget values across the app."""
+    """Synchronize shared coordinate state without mutating existing widgets."""
     st.session_state.coord_lat = latitude
     st.session_state.coord_lon = longitude
-    st.session_state.t2_in_lat = latitude
-    st.session_state.t2_in_lon = longitude
-    st.session_state.t1_input_geo_lat = latitude
-    st.session_state.t1_input_geo_lon = longitude
 
 
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
@@ -153,7 +149,6 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lat),
                         format="%.5f",
                         step=0.01,
-                        key="t2_in_lat"
                     )
                 with g_c2:
                     in_lon = st.number_input(
@@ -163,7 +158,6 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lon),
                         format="%.5f",
                         step=0.01,
-                        key="t2_in_lon"
                     )
                 with g_c3:
                     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
