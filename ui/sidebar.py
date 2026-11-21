@@ -33,10 +33,43 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 "offline": ("#FEE2E2", "#991B1B", "#DC2626"),
             }
             background, text_color, icon_color = colors[tone]
+            if icon == "check_circle":
+                icon_svg = (
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+                    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>'
+                    '<path d="M7.5 12.2l3 3 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+                    '</svg>'
+                )
+            elif icon == "power_off":
+                icon_svg = (
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+                    '<path d="M12 2v10M7.1 5.8a8 8 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+                    '</svg>'
+                )
+            elif icon == "sync":
+                icon_svg = (
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+                    '<path d="M20 11a8 8 0 0 0-13.7-5.6L4 7.7M4 3v4.7h4.7M4 13a8 8 0 0 0 13.7 5.6l2.3-2.3M20 21v-4.7h-4.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+                    '</svg>'
+                )
+            elif icon == "error":
+                icon_svg = (
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+                    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>'
+                    '<path d="M12 7v6M12 17h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+                    '</svg>'
+                )
+            else:
+                icon_svg = (
+                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+                    '<rect x="4" y="6" width="16" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>'
+                    '<path d="M9 10h6M9 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+                    '</svg>'
+                )
             return (
                 f'<div class="readiness-card" style="background:{background};">'
                 f'<span class="readiness-icon" style="color:{icon_color};">'
-                f'<span class="material-symbols-rounded" style="font-size:18px;">{icon}</span>'
+                f'{icon_svg}'
                 '</span>'
                 f'<span class="readiness-copy" style="color:{text_color};">'
                 f'<span class="readiness-title" style="white-space:nowrap;">{title}</span>'
