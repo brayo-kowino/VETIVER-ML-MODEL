@@ -156,44 +156,66 @@ def fetch_live_reverse_geocode(lat: float, lon: float) -> Optional[Dict[str, str
 
 
 def search_location(query: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Forward-geocode a place name through OpenStreetMap Nominatim."""
+    """Forward-geocode a place name through Open-Meteo with Nominatim fallback."""
     query = str(query).strip()
     if not query:
         return []
 
     try:
-        url = "https://nominatim.openstreetmap.org/search"
         headers = {"User-Agent": "VetiverBioEngDecisionSupport/1.0"}
-        queries = [query]
-        if not any(code in query.lower() for code in ["kenya", "ethiopia", "zambia", "zimbabwe", "uganda", "tanzania"]):
-            queries.append(f"{query}, Kenya")
-
         with httpx.Client(timeout=4.0) as client:
-            for search_query in queries:
-                params = {
-                    "q": search_query,
-                    "format": "jsonv2",
-                    "addressdetails": 1,
-                    "limit": limit,
-                }
-                resp = client.get(url, params=params, headers=headers)
-                if resp.status_code != 200:
-                    continue
-
+            open_meteo_url = "https://geocoding-api.open-meteo.com/v1/search"
+            open_meteo_params = {
+                "name": query,
+                "count": limit,
+                "language": "en",
+                "format": "json",
+            }
+            resp = client.get(open_meteo_url, params=open_meteo_params, headers=headers)
+            if resp.status_code == 200:
                 results = []
-                for item in resp.json():
+                for item in resp.json().get("results", []):
                     try:
+                        name_parts = [
+                            item.get("name"),
+                            item.get("admin1"),
+                            item.get("country"),
+                        ]
+                        display_name = ", ".join(part for part in name_parts if part)
                         results.append({
-                            "display_name": item.get("display_name", query),
-                            "latitude": float(item["lat"]),
-                            "longitude": float(item["lon"]),
-                            "type": item.get("type"),
+                            "display_name": display_name,
+                            "latitude": float(item["latitude"]),
+                            "longitude": float(item["longitude"]),
+                            "type": item.get("feature_code"),
                         })
                     except (KeyError, TypeError, ValueError):
                         continue
                 if results:
                     return results
-            return []
+
+            nominatim_url = "https://nominatim.openstreetmap.org/search"
+            nominatim_params = {
+                "q": query,
+                "format": "jsonv2",
+                "addressdetails": 1,
+                "limit": limit,
+            }
+            resp = client.get(nominatim_url, params=nominatim_params, headers=headers)
+            if resp.status_code != 200:
+                return []
+
+            results = []
+            for item in resp.json():
+                try:
+                    results.append({
+                        "display_name": item.get("display_name", query),
+                        "latitude": float(item["lat"]),
+                        "longitude": float(item["lon"]),
+                        "type": item.get("type"),
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+            return results
     except Exception as exc:
         logger.debug("Nominatim location search skipped: %s", exc)
         return []
