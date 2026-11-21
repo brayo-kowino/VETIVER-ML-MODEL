@@ -4,8 +4,7 @@ from datetime import datetime
 
 import streamlit as st
 import pandas as pd
-import folium
-from streamlit_folium import st_folium
+import pydeck as pdk
 
 import config
 from services.biomechanics import (
@@ -25,7 +24,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
         st.warning("No regional hotspot database found at data/regional_hotspots.json.", icon=":material/warning:")
     else:
         # Top Compact Bar: Geographic Scope, Basemap Style, 3D Elevation
-        top_c1, top_c2 = st.columns([1.8, 1.3])
+        top_c1, top_c2, top_c3 = st.columns([1.8, 1.3, 0.9])
         with top_c1:
             scope_mode = st.radio(
                 "Geographic Scope Filter",
@@ -51,6 +50,17 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 index=0,
                 help="Select your preferred cartographic tile style."
             )
+        with top_c3:
+            st.markdown("<div style='margin-top: 26px;'></div>", unsafe_allow_html=True)
+            show_3d_elevation = st.checkbox("3D Elevation", value=False, help="Render slender 3D bio-engineering pillars indicating site altitude.")
+
+        # Map style URL mapping
+        style_url_map = {
+            "Positron (Light Boundaries & Roads)": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+            "Voyager (Topography & Contours)": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+            "Dark Matter (High-Contrast GIS)": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        }
+        selected_style_url = style_url_map.get(map_style_choice, "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json")
 
         # Validate that session state contains a valid hotspot id within the active filter
         valid_ids = [h["id"] for h in filtered_hotspots]
@@ -200,99 +210,232 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         st.session_state.pan_to_custom = True
                         st.rerun()
 
+            # Camera parameters
             if st.session_state.get("pan_to_custom") and st.session_state.custom_coord_site:
                 map_lat = st.session_state.custom_coord_site["latitude"]
                 map_lon = st.session_state.custom_coord_site["longitude"]
-                map_zoom = 9
+                map_zoom = 9.8
+                map_pitch = 40
             else:
                 map_lat = selected_hs["latitude"]
                 map_lon = selected_hs["longitude"]
-                map_zoom = 7 if "Kenya" in scope_mode else 5
+                map_zoom = 8.2 if "Kenya" in scope_mode else 6.8
+                map_pitch = 38
 
-            tile_name = {
-                "Positron (Light Boundaries & Roads)": "CartoDB positron",
-                "Voyager (Topography & Contours)": "OpenStreetMap",
-                "Dark Matter (High-Contrast GIS)": "CartoDB dark_matter",
-            }.get(map_style_choice, "CartoDB positron")
-
-            folium_map = folium.Map(
-                location=[map_lat, map_lon],
-                zoom_start=map_zoom,
-                tiles=tile_name,
-                control_scale=True,
+            view_state = pdk.ViewState(
+                latitude=map_lat,
+                longitude=map_lon,
+                zoom=map_zoom,
+                pitch=map_pitch,
+                bearing=0,
             )
 
-            for hotspot in filtered_hotspots:
-                is_selected = hotspot["id"] == st.session_state.selected_hotspot_id
-                folium.CircleMarker(
-                    location=[hotspot["latitude"], hotspot["longitude"]],
-                    radius=8 if is_selected else 6,
-                    color="#14532D" if is_selected else "#2563EB",
-                    fill=True,
-                    fill_color="#22C55E" if is_selected else "#60A5FA",
-                    fill_opacity=0.95,
-                    weight=3 if is_selected else 2,
-                    tooltip=f"{hotspot['name']} — {hotspot['county_region']}",
-                    popup=folium.Popup(
-                        f"<b>{hotspot['name']}</b><br>"
-                        f"{hotspot['county_region']}, {hotspot['country']}<br>"
-                        f"Elevation: {hotspot['elevation_m']} m",
-                        max_width=260,
-                    ),
-                ).add_to(folium_map)
+            df_map = pd.DataFrame(filtered_hotspots)
+            df_active = pd.DataFrame([selected_hs])
 
+            # Layer 1: Base Hotspot Pins (Interactive Scatterplot)
+            scatter_layer = pdk.Layer(
+                "ScatterplotLayer",
+                id="hotspot-scatter",
+                data=df_map,
+                get_position=["longitude", "latitude"],
+                get_color="color",
+                pickable=True,
+                auto_highlight=True,
+                highlight_color=[250, 204, 21, 220],
+                radius_min_pixels=10,
+                radius_max_pixels=24,
+                stroked=True,
+                filled=True,
+                line_width_min_pixels=2.5,
+                get_line_color=[255, 255, 255, 255],
+            )
+
+            # Layer 2: Active Focused Beacon Ring (Electric Cyan Halo)
+            halo_layer = pdk.Layer(
+                "ScatterplotLayer",
+                id="hotspot-active-halo",
+                data=df_active,
+                get_position=["longitude", "latitude"],
+                get_color=[0, 0, 0, 0],
+                stroked=True,
+                filled=False,
+                radius_min_pixels=18,
+                radius_max_pixels=34,
+                line_width_min_pixels=3.5,
+                get_line_color=[56, 189, 248, 255],
+                pickable=False,
+            )
+
+            # Layer 3: Clean Pill Badges with Site Short Names
+            text_layer = pdk.Layer(
+                "TextLayer",
+                id="hotspot-labels",
+                data=df_map,
+                get_position=["longitude", "latitude"],
+                get_text="short_label",
+                get_size=12,
+                get_color=[255, 255, 255, 255],
+                get_text_anchor="'start'",
+                get_alignment_baseline="'center'",
+                pixel_offset=[14, -1],
+                background=True,
+                get_background_color=[15, 23, 42, 225],
+                background_padding=[4, 7, 4, 7],
+                pickable=True,
+            )
+
+            map_layers = [scatter_layer, halo_layer, text_layer]
+
+            # Optional Layer 4: Custom Queried GPS Target Beacon Layer
             if st.session_state.custom_coord_site is not None:
                 c_site = st.session_state.custom_coord_site
-                folium.Marker(
-                    location=[c_site["latitude"], c_site["longitude"]],
-                    tooltip=f"Selected site: {c_site['county']}",
-                    icon=folium.Icon(color="orange", icon="crosshairs", prefix="fa"),
-                ).add_to(folium_map)
+                df_custom = pd.DataFrame([{
+                    "latitude": c_site["latitude"],
+                    "longitude": c_site["longitude"],
+                    "name": f"Target: {c_site['county']}",
+                    "county_region": c_site["county"],
+                    "country": c_site["country"],
+                    "elevation_m": c_site["elevation_m"],
+                    "status": "Queried GPS Coordinate",
+                    "soil_mechanical_class": c_site["soil_mechanical_class"],
+                    "climate_rainfall_zone": c_site["climate_rainfall_zone"],
+                    "kpi1": f"Salinity: {c_site['salinity_tier']}",
+                    "kpi2": f"Hazard: {c_site['default_hazard']}",
+                    "citation": c_site["data_sources"],
+                }])
 
-            map_event = st_folium(
-                folium_map,
-                height=650,
-                use_container_width=True,
-                returned_objects=["last_clicked", "last_object_clicked"],
-                key="folium_gis_click_map",
+                custom_scatter = pdk.Layer(
+                    "ScatterplotLayer",
+                    id="custom-target-scatter",
+                    data=df_custom,
+                    get_position=["longitude", "latitude"],
+                    get_color=[245, 158, 11, 240],  # Glowing Amber
+                    pickable=True,
+                    auto_highlight=True,
+                    highlight_color=[251, 191, 36, 255],
+                    radius_min_pixels=13,
+                    radius_max_pixels=28,
+                    stroked=True,
+                    filled=True,
+                    line_width_min_pixels=3,
+                    get_line_color=[255, 255, 255, 255],
+                )
+                custom_halo = pdk.Layer(
+                    "ScatterplotLayer",
+                    id="custom-target-halo",
+                    data=df_custom,
+                    get_position=["longitude", "latitude"],
+                    get_color=[0, 0, 0, 0],
+                    stroked=True,
+                    filled=False,
+                    radius_min_pixels=24,
+                    radius_max_pixels=46,
+                    line_width_min_pixels=3.5,
+                    get_line_color=[245, 158, 11, 220],
+                    pickable=False,
+                )
+                custom_text = pdk.Layer(
+                    "TextLayer",
+                    id="custom-target-labels",
+                    data=df_custom,
+                    get_position=["longitude", "latitude"],
+                    get_text="name",
+                    get_size=13,
+                    get_color=[255, 255, 255, 255],
+                    get_text_anchor="'start'",
+                    get_alignment_baseline="'center'",
+                    pixel_offset=[16, -1],
+                    background=True,
+                    get_background_color=[180, 83, 9, 235],
+                    background_padding=[4, 8, 4, 8],
+                    pickable=True,
+                )
+                map_layers.extend([custom_scatter, custom_halo, custom_text])
+
+            # Optional Layer 5: 3D Elevation Columns
+            if show_3d_elevation:
+                column_layer = pdk.Layer(
+                    "ColumnLayer",
+                    id="hotspot-pillars",
+                    data=df_map,
+                    get_position=["longitude", "latitude"],
+                    get_elevation="elevation_m",
+                    elevation_scale=3.5,
+                    radius=1200,
+                    get_fill_color="color",
+                    pickable=False,
+                )
+                map_layers.insert(0, column_layer)
+
+            deck = pdk.Deck(
+                layers=map_layers,
+                initial_view_state=view_state,
+                map_style=selected_style_url,
+                tooltip={
+                    "html": """
+                        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #F8FAFC; background: #0F172A; padding: 12px; border-radius: 8px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 320px;">
+                            <div style="font-weight: 800; font-size: 14px; color: #38BDF8; margin-bottom: 4px;">{name}</div>
+                            <div style="color: #94A3B8; margin-bottom: 6px; font-size: 12px;">{county_region}, {country} &bull; Elev: {elevation_m} m a.s.l.</div>
+                            <div style="margin-bottom: 4px;"><b>Geotechnical Status:</b> <span style="font-weight: 700; color: #4ADE80;">{status}</span></div>
+                            <div style="margin-bottom: 4px;"><b>USCS Soil Class:</b> {soil_mechanical_class}</div>
+                            <div style="margin-bottom: 4px;"><b>Precipitation Zone:</b> {climate_rainfall_zone}</div>
+                            <div style="margin-bottom: 4px;"><b>Key Metric:</b> {kpi1} | {kpi2}</div>
+                            <div style="font-size: 11px; color: #38BDF8; margin-top: 6px; border-top: 1px solid #334155; padding-top: 4px;"><i>Tip: Click this pin to inspect engineering parameters.</i></div>
+                        </div>
+                    """,
+                    "style": {"zIndex": "1000"}
+                }
             )
 
-            click_location = map_event.get("last_clicked") or map_event.get("last_object_clicked")
-            if click_location:
-                click_lat = float(click_location["lat"])
-                click_lon = float(click_location["lng"])
-                click_key = f"{click_lat:.5f},{click_lon:.5f}"
+            custom_key_part = f"cust_{st.session_state.custom_coord_site['latitude']}_{st.session_state.custom_coord_site['longitude']}" if st.session_state.custom_coord_site else "none"
+            deck_chart_key = f"pdk_gis_{scope_mode}_{selected_hs['id']}_{custom_key_part}_{map_style_choice}"
+            deck_event = st.pydeck_chart(
+                deck,
+                width="stretch",
+                height=650,
+                on_select="rerun",
+                selection_mode="single-object",
+                key=deck_chart_key,
+            )
 
-                if click_key != st.session_state.processed_map_selection:
-                    matched_hotspot = None
-                    for hotspot in filtered_hotspots:
-                        if abs(hotspot["latitude"] - click_lat) < 0.0005 and abs(hotspot["longitude"] - click_lon) < 0.0005:
-                            matched_hotspot = hotspot
-                            break
+            # Handle Map Pin Click Selection Event
+            if deck_event and hasattr(deck_event, "selection") and deck_event.selection:
+                clicked_id = None
+                clicked_objs = deck_event.selection.get("objects", {}).get("hotspot-scatter", [])
+                if not clicked_objs:
+                    clicked_objs = deck_event.selection.get("objects", {}).get("hotspot-labels", [])
+                if clicked_objs and isinstance(clicked_objs, list) and len(clicked_objs) > 0:
+                    first_item = clicked_objs[0]
+                    if isinstance(first_item, dict):
+                        clicked_id = first_item.get("id")
 
-                    st.session_state.processed_map_selection = click_key
-                    st.session_state.coord_lat = click_lat
-                    st.session_state.coord_lon = click_lon
+                if not clicked_id:
+                    clicked_indices = deck_event.selection.get("indices", {}).get("hotspot-scatter", [])
+                    if not clicked_indices:
+                        clicked_indices = deck_event.selection.get("indices", {}).get("hotspot-labels", [])
+                    if clicked_indices and isinstance(clicked_indices, list) and len(clicked_indices) > 0:
+                        idx = clicked_indices[0]
+                        if 0 <= idx < len(filtered_hotspots):
+                            clicked_id = filtered_hotspots[idx]["id"]
 
-                    if matched_hotspot is not None:
-                        st.session_state.selected_hotspot_id = matched_hotspot["id"]
-                        st.session_state.custom_coord_site = None
-                    else:
-                        c_site = resolve_coordinate_geotechnics(click_lat, click_lon)
-                        st.session_state.custom_coord_site = c_site
-                        st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                        st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                        st.session_state.preset_moisture = c_site["establishment_moisture"]
-                        st.session_state.preset_hydro = c_site["hydrological_stress"]
-                        st.session_state.preset_salinity = c_site["salinity_tier"]
-                        st.session_state.preset_hazard = c_site["default_hazard"]
+                selection_key = f"{deck_chart_key}:{clicked_id}" if clicked_id else None
+                already_processed = selection_key == st.session_state.processed_map_selection
 
-                    st.session_state.pan_to_custom = matched_hotspot is None
+                if (
+                    clicked_id
+                    and clicked_id in valid_ids
+                    and clicked_id != st.session_state.selected_hotspot_id
+                    and not already_processed
+                ):
+                    st.session_state.processed_map_selection = selection_key
+                    st.session_state.selected_hotspot_id = clicked_id
+                    st.session_state.custom_coord_site = None
+                    st.session_state.pan_to_custom = False
                     st.session_state.current_assessment = None
                     st.session_state.custom_assessment_result = None
-                    st.rerun()
 
-            st.caption(":material/info: **GIS Guide:** Left-click anywhere to ingest that coordinate. Click a colored pin to inspect that hotspot.")
+            st.caption(":material/info: **3D GIS Guide:** Left-Click any pin to inspect. Right-Click + Drag (or Ctrl + Drag) to adjust 3D pitch/bearing. Scroll to zoom.")
 
         # ── INSPECTOR & GEOTECHNICAL WORKBENCH (RIGHT ~38%) ──
         with col_inspector:
