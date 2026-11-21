@@ -1212,9 +1212,9 @@ hazard_display_map = {
 
 # --- 7. HYBRID UI (TABS WITH MATERIAL ICONS) ---
 tab1, tab2, tab3 = st.tabs([
-    ":material/analytics: Geotechnical Suitability & SHAP",
-    ":material/map: Regional Hotspots & 3D GIS Map",
-    ":material/forum: Literature & Knowledge Chat"
+    ":material/analytics: Geotechnical Analytics",
+    ":material/map: 3D GIS Map",
+    ":material/forum: VetiverChat Assistant",
 ])
 
 
