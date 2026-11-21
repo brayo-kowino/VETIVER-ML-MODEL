@@ -14,7 +14,7 @@ from services.biomechanics import (
 from services.remediation import get_failure_banner_details, get_two_tier_remediations
 from services.assessment_service import run_assessment
 from services.model_service import load_regional_hotspots
-from geospatial_resolver import resolve_coordinate_geotechnics
+from geospatial_resolver import resolve_coordinate_geotechnics, search_location
 from geotechnical_engine import calculate_slope_stability, calculate_field_boq
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
     st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
@@ -76,6 +76,63 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
         with col_map:
             # Inline GPS Geocoder & Quick Corridor Bar
             with st.container(border=True):
+                search_text, search_button = st.columns([3.2, 1.0])
+                with search_text:
+                    place_query = st.text_input(
+                        "Search place name",
+                        placeholder="Nairobi, Moi International Airport, Voi...",
+                        key="t2_place_search",
+                    )
+                with search_button:
+                    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                    place_search_btn = st.button(
+                        "Search",
+                        width="stretch",
+                        icon=":material/search:",
+                        key="btn_t2_place_search",
+                    )
+
+                if place_search_btn:
+                    if place_query.strip():
+                        st.session_state.location_search_results = search_location(place_query)
+                        if not st.session_state.location_search_results:
+                            st.warning("No location matches were found. Try a town, county, or landmark name.", icon=":material/search_off:")
+                    else:
+                        st.session_state.location_search_results = []
+                        st.warning("Enter a place name to search.", icon=":material/info:")
+
+                if st.session_state.location_search_results:
+                    result_labels = [
+                        result["display_name"]
+                        for result in st.session_state.location_search_results
+                    ]
+                    selected_result_label = st.selectbox(
+                        "Search result",
+                        result_labels,
+                        key="t2_place_search_result",
+                    )
+                    selected_result = next(
+                        result
+                        for result in st.session_state.location_search_results
+                        if result["display_name"] == selected_result_label
+                    )
+                    if st.button("Use selected location", type="primary", width="stretch", icon=":material/my_location:", key="btn_t2_use_search_result"):
+                        search_lat = selected_result["latitude"]
+                        search_lon = selected_result["longitude"]
+                        st.session_state.coord_lat = search_lat
+                        st.session_state.coord_lon = search_lon
+                        c_site = resolve_coordinate_geotechnics(search_lat, search_lon)
+                        st.session_state.custom_coord_site = c_site
+                        st.session_state.preset_soil = c_site["soil_mechanical_class"]
+                        st.session_state.preset_climate = c_site["climate_rainfall_zone"]
+                        st.session_state.preset_moisture = c_site["establishment_moisture"]
+                        st.session_state.preset_hydro = c_site["hydrological_stress"]
+                        st.session_state.preset_salinity = c_site["salinity_tier"]
+                        st.session_state.preset_hazard = c_site["default_hazard"]
+                        st.session_state.custom_assessment_result = None
+                        st.session_state.pan_to_custom = True
+                        st.rerun()
+
                 g_c1, g_c2, g_c3 = st.columns([1.2, 1.2, 1.6])
                 with g_c1:
                     in_lat = st.number_input(

@@ -13,7 +13,7 @@ import json
 import logging
 import math
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import config
 
@@ -153,6 +153,38 @@ def fetch_live_reverse_geocode(lat: float, lon: float) -> Optional[Dict[str, str
     except Exception as exc:
         logger.debug("Live Nominatim reverse geocode skipped: %s", exc)
         return None
+
+
+def search_location(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Forward-geocode a place name through OpenStreetMap Nominatim."""
+    query = str(query).strip()
+    if not query:
+        return []
+
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        headers = {"User-Agent": "VetiverBioEngDecisionSupport/1.0"}
+        params = {"q": query, "format": "jsonv2", "addressdetails": 1, "limit": limit}
+        with httpx.Client(timeout=4.0) as client:
+            resp = client.get(url, params=params, headers=headers)
+            if resp.status_code != 200:
+                return []
+
+            results = []
+            for item in resp.json():
+                try:
+                    results.append({
+                        "display_name": item.get("display_name", query),
+                        "latitude": float(item["lat"]),
+                        "longitude": float(item["lon"]),
+                        "type": item.get("type"),
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+            return results
+    except Exception as exc:
+        logger.debug("Nominatim location search skipped: %s", exc)
+        return []
 
 
 def resolve_offline_gis_matrix(lat: float, lon: float) -> Dict[str, Any]:
