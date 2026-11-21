@@ -19,6 +19,7 @@ def init_session_state() -> None:
         "coord_lat": -1.2921,
         "coord_lon": 36.8219,
         "pan_to_custom": False,
+        "processed_map_selection": None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
