@@ -1123,7 +1123,7 @@ def export_chat_markdown(messages: list) -> str:
     """Format full chat history with citations into an exportable Markdown file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
-        "# Vetiver Literature & Knowledge Chat Session",
+        "# Vetiver AI Chat Session Export",
         f"**Exported:** {timestamp}\n",
         "---",
     ]

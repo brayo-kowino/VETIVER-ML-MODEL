@@ -22,11 +22,11 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 st.error("ML Model\n**Offline**", icon=":material/error:")
         with col_s2:
             if ollama_online and query_engine:
-                st.success("Vetiver\n**Ready**", icon=":material/smart_toy:")
+                st.success("Vetiver AI\n**Ready**", icon=":material/smart_toy:")
             elif ollama_online:
-                st.warning("Vetiver\n**Indexing**", icon=":material/sync:")
+                st.warning("Vetiver AI\n**Indexing**", icon=":material/sync:")
             else:
-                st.error("Vetiver\n**Offline**", icon=":material/power_off:")
+                st.error("Vetiver AI\n**Offline**", icon=":material/power_off:")
 
         st.divider()
 
