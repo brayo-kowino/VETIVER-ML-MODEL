@@ -37,7 +37,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
         )
 
         st.divider()
-        # Chat and Session Actions
+        # Session Actions
         if st.session_state.get("messages"):
             chat_md = export_chat_markdown(st.session_state.messages)
             st.download_button(
@@ -67,4 +67,3 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
             st.caption(f"• **CPU Threads:** {config.OLLAMA_NUM_THREADS}")
             st.caption(f"• **Top-K Retrieval:** {config.RAG_SIMILARITY_TOP_K}")
             st.caption(f"• **Chunk Size / Overlap:** {config.RAG_CHUNK_SIZE} / {config.RAG_CHUNK_OVERLAP}")
-            
