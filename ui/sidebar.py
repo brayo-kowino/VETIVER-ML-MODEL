@@ -13,19 +13,49 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
         st.divider()
 
         st.markdown("##### System Readiness")
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            if cb_model:
-                st.success("ML Model\n**Ready**", icon=":material/check_circle:")
-            else:
-                st.error("ML Model\n**Offline**", icon=":material/error:")
-        with col_s2:
-            if ollama_online and query_engine:
-                st.success("Vetiver AI\n**Ready**", icon=":material/smart_toy:")
-            elif ollama_online:
-                st.warning("Vetiver AI\n**Indexing**", icon=":material/sync:")
-            else:
-                st.error("Vetiver AI\n**Offline**", icon=":material/power_off:")
+        if cb_model:
+            ml_card = ("ready", "check_circle", "ML Model", "Ready")
+        else:
+            ml_card = ("offline", "error", "ML Model", "Offline")
+
+        if ollama_online and query_engine:
+            ai_card = ("ready", "smart_toy", "Vetiver AI", "Ready")
+        elif ollama_online:
+            ai_card = ("indexing", "sync", "Vetiver AI", "Indexing")
+        else:
+            ai_card = ("offline", "power_off", "Vetiver AI", "Offline")
+
+        def readiness_card(card):
+            tone, icon, title, status = card
+            colors = {
+                "ready": ("#DCFCE7", "#166534", "#15803D"),
+                "indexing": ("#FEF3C7", "#92400E", "#D97706"),
+                "offline": ("#FEE2E2", "#991B1B", "#DC2626"),
+            }
+            background, text_color, icon_color = colors[tone]
+            return (
+                f'<div class="readiness-card" style="background:{background};">'
+                f'<span class="readiness-icon" style="color:{icon_color};">'
+                f'<span class="material-symbols-rounded" style="font-size:18px;">{icon}</span>'
+                '</span>'
+                f'<span class="readiness-copy" style="color:{text_color};">'
+                f'<span class="readiness-title" style="white-space:nowrap;">{title}</span>'
+                f'<strong class="readiness-status" style="color:{text_color};">{status}</strong>'
+                '</span>'
+                '</div>'
+            )
+
+        readiness_col1, readiness_col2 = st.columns(2)
+        with readiness_col1:
+            st.markdown(
+                readiness_card(ml_card),
+                unsafe_allow_html=True,
+            )
+        with readiness_col2:
+            st.markdown(
+                readiness_card(ai_card),
+                unsafe_allow_html=True,
+            )
 
         st.divider()
         st.markdown("##### How to Use")
