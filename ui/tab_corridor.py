@@ -419,13 +419,21 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         if 0 <= idx < len(filtered_hotspots):
                             clicked_id = filtered_hotspots[idx]["id"]
 
-                if clicked_id and clicked_id in valid_ids and clicked_id != st.session_state.selected_hotspot_id:
+                selection_key = f"{deck_chart_key}:{clicked_id}" if clicked_id else None
+                already_processed = selection_key == st.session_state.processed_map_selection
+
+                if (
+                    clicked_id
+                    and clicked_id in valid_ids
+                    and clicked_id != st.session_state.selected_hotspot_id
+                    and not already_processed
+                ):
+                    st.session_state.processed_map_selection = selection_key
                     st.session_state.selected_hotspot_id = clicked_id
                     st.session_state.custom_coord_site = None
                     st.session_state.pan_to_custom = False
                     st.session_state.current_assessment = None
                     st.session_state.custom_assessment_result = None
-                    st.rerun()
 
             st.caption(":material/info: **3D GIS Guide:** Left-Click any pin to inspect. Right-Click + Drag (or Ctrl + Drag) to adjust 3D pitch/bearing. Scroll to zoom.")
 
