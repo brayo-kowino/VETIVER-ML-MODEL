@@ -12,9 +12,8 @@ llama-index-embeddings-ollama==0.10.0
 
 # ── Web UI ─────────────────────────────────────
 streamlit==1.65.0
-streamlit-folium==0.25.2
-folium==0.20.0
 plotly==6.5.0
+pydeck==0.9.1
 httpx==0.28.1
 
 # ── Utilities ──────────────────────────────────
