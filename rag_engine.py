@@ -134,7 +134,7 @@ def build_query_engine(
             logger.info("Loading persisted index from %s", persist_dir)
             storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
             index = load_index_from_storage(storage_context)
-            logger.info("Persisted index successfully loaded.")
+            logger.info("Persisted index successfully loaded.") 
         else:
             if not os.path.isdir(knowledge_base_dir):
                 logger.warning("Knowledge base directory not found: %s", knowledge_base_dir)

@@ -319,6 +319,148 @@ def generate_slope_cross_section_fig(
     return fig, stability
 
 
+def generate_fos_sensitivity_fig(
+    height_m: float = 6.0,
+    slope_angle_deg: float = 35.0,
+    soil_class: str = "Sandy Clay / Loam",
+    water_table_ratio: float = 0.25,
+    root_depth_m: float = 2.8,
+    root_cohesion_kpa: float = 16.5,
+    design_slip_depth_m: float = 1.0,
+    sensitivity_variable: str = "angle",
+):
+    """
+    Renders an interactive Limit Equilibrium Factor of Safety (FoS) Sensitivity Chart (Plotly).
+    Plots FoS as a function of slope inclination angle (beta: 20° to 60°) or groundwater saturation (ru: 0.0 to 0.8).
+    Includes Eurocode 7 critical threshold line (FoS = 1.30) and active operating point diamond.
+    """
+    fig = go.Figure()
+
+    # Active operating response
+    active_res = calculate_slope_stability(
+        height_m=height_m,
+        slope_angle_deg=slope_angle_deg,
+        soil_class=soil_class,
+        water_table_ratio=water_table_ratio,
+        root_depth_m=root_depth_m,
+        root_cohesion_kpa=root_cohesion_kpa,
+        design_slip_depth_m=design_slip_depth_m,
+    )
+
+    if sensitivity_variable == "water_table":
+        ru_vals = np.linspace(0.0, 0.8, 33)
+        fb_list = []
+        fr_list = []
+        for ru in ru_vals:
+            res = calculate_slope_stability(
+                height_m=height_m,
+                slope_angle_deg=slope_angle_deg,
+                soil_class=soil_class,
+                water_table_ratio=float(ru),
+                root_depth_m=root_depth_m,
+                root_cohesion_kpa=root_cohesion_kpa,
+                design_slip_depth_m=design_slip_depth_m,
+            )
+            fb_list.append(res["fos_unreinforced"])
+            fr_list.append(res["fos_reinforced"])
+
+        x_vals = ru_vals
+        y_base = fb_list
+        y_reinf = fr_list
+        x_title = "Porewater Pressure Ratio ru (0.0 = Dry, 0.8 = High Monsoon Water Table)"
+        chart_title = f"<b>Factor of Safety vs Groundwater Saturation (β = {slope_angle_deg}°, USCS: {soil_class})</b>"
+        active_x = water_table_ratio
+        active_y = active_res["fos_reinforced"]
+        marker_label = f"Active ru: {water_table_ratio:.2f}"
+    else:
+        angles = np.linspace(20.0, 60.0, 41)
+        fb_list = []
+        fr_list = []
+        for a in angles:
+            res = calculate_slope_stability(
+                height_m=height_m,
+                slope_angle_deg=float(a),
+                soil_class=soil_class,
+                water_table_ratio=water_table_ratio,
+                root_depth_m=root_depth_m,
+                root_cohesion_kpa=root_cohesion_kpa,
+                design_slip_depth_m=design_slip_depth_m,
+            )
+            fb_list.append(res["fos_unreinforced"])
+            fr_list.append(res["fos_reinforced"])
+
+        x_vals = angles
+        y_base = fb_list
+        y_reinf = fr_list
+        x_title = "Slope Inclination Angle β (degrees)"
+        chart_title = f"<b>Factor of Safety vs Slope Angle β (ru = {water_table_ratio:.2f}, USCS: {soil_class})</b>"
+        active_x = slope_angle_deg
+        active_y = active_res["fos_reinforced"]
+        marker_label = f"Active: {slope_angle_deg}°"
+
+    # Dynamic Y upper bound
+    max_y = max(max(y_reinf) + 0.3, 3.5)
+
+    # Shaded safety zones
+    fig.add_hrect(y0=1.30, y1=max_y, fillcolor="#DCFCE7", opacity=0.20, line_width=0)
+    fig.add_hrect(y0=0.0, y1=1.0, fillcolor="#FEE2E2", opacity=0.25, line_width=0)
+
+    # Eurocode 7 critical threshold
+    fig.add_hline(
+        y=1.30, line_dash="dash", line_color="#D97706", line_width=2,
+        annotation_text="Eurocode 7 Critical Threshold (FoS = 1.30)",
+        annotation_position="top left",
+        annotation_font=dict(size=11, color="#B45309")
+    )
+
+    # Unreinforced curve
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=y_base,
+        mode="lines",
+        name="Unreinforced Bare Slope",
+        line=dict(color="#DC2626", width=2.5, dash="dash"),
+        hovertemplate="Unreinforced FoS: %{y:.2f}<extra></extra>"
+    ))
+
+    # Bio-reinforced curve
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=y_reinf,
+        mode="lines",
+        name="Bio-Reinforced (Vetiver Roots)",
+        line=dict(color="#16A34A", width=3.5),
+        hovertemplate="Bio-Reinforced FoS: %{y:.2f}<extra></extra>"
+    ))
+
+    # Active Operating Point marker
+    fig.add_trace(go.Scatter(
+        x=[active_x], y=[active_y],
+        mode="markers+text",
+        name=f"Active Operating State ({marker_label})",
+        marker=dict(size=13, color="#0284C7", symbol="diamond", line=dict(color="#FFFFFF", width=2)),
+        text=[f"FoS: {active_y:.2f}"],
+        textposition="top right",
+        textfont=dict(color="#0369A1", size=11),
+    ))
+
+    fig.update_layout(
+        title=dict(text=chart_title, font=dict(size=14, color="#0F172A")),
+        xaxis=dict(title=x_title, showgrid=True, gridcolor="#E2E8F0", zeroline=False),
+        yaxis=dict(title="Factor of Safety (FoS)", showgrid=True, gridcolor="#E2E8F0", range=[0, max_y]),
+        template="plotly_white",
+        hovermode="x unified",
+        height=330,
+        margin=dict(l=45, r=30, t=50, b=45),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(255,255,255,0.85)"),
+    )
+
+    stats = {
+        "active_fos_base": active_res["fos_unreinforced"],
+        "active_fos_reinf": active_res["fos_reinforced"],
+        "active_boost_pct": active_res["fos_boost_pct"],
+    }
+    return fig, stats
+
+
 def calculate_field_boq(
     height_m: float = 6.0,
     width_m: float = 30.0,

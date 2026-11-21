@@ -5,6 +5,7 @@ Provides pre-computed transport corridors across East Africa and custom CSV batc
 """
 
 import math
+import json
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -246,3 +247,66 @@ def generate_corridor_profile_fig(df_corridor: pd.DataFrame, corridor_name: str)
     )
 
     return fig
+
+
+def export_corridor_geojson(df_corridor: pd.DataFrame, corridor_name: str = "Corridor Alignment") -> str:
+    """
+    Exports corridor alignment waypoints and geotechnical assessment attributes
+    to a valid GeoJSON FeatureCollection for GIS software (QGIS, ArcGIS, Google Earth).
+    """
+    features = []
+    coordinates = []
+
+    for _, row in df_corridor.iterrows():
+        try:
+            lat = float(row.get("Latitude", 0.0))
+            lon = float(row.get("Longitude", 0.0))
+        except (ValueError, TypeError):
+            continue
+
+        coordinates.append([lon, lat])
+
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [lon, lat]
+            },
+            "properties": {
+                "chainage_km": row.get("Chainage (km)"),
+                "station_name": str(row.get("Station Name", "")),
+                "elevation_m": row.get("Elevation (m)"),
+                "soil_class": str(row.get("USCS Soil Class", "")),
+                "verdict": str(row.get("Verdict", "")),
+                "model_confidence": str(row.get("Model Confidence", "")),
+                "category": str(row.get("Category", "")),
+                "fos_boost": str(row.get("FoS Boost", "")),
+                "prescribed_protocol": str(row.get("Prescribed Engineering Protocol", "")),
+            }
+        }
+        features.append(feature)
+
+    # Add alignment line
+    if len(coordinates) >= 2:
+        line_feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": coordinates
+            },
+            "properties": {
+                "name": corridor_name,
+                "type": "Infrastructure Corridor Alignment",
+                "total_stations": len(coordinates)
+            }
+        }
+        features.insert(0, line_feature)
+
+    geojson_obj = {
+        "type": "FeatureCollection",
+        "name": corridor_name,
+        "features": features
+    }
+
+    return json.dumps(geojson_obj, indent=2)
+
