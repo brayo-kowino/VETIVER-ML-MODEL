@@ -29,7 +29,6 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 st.error("Vetiver AI\n**Offline**", icon=":material/power_off:")
 
         st.divider()
-
         st.markdown("##### How to Use")
         st.caption(
             "1. **Select Site:** Enter GPS coords or pick a corridor in Tab 1 or Tab 2.\n\n"
