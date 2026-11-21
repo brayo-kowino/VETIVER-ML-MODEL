@@ -24,7 +24,6 @@
     }
 
     .readiness-card {
-        min-height: 82px;
         height: auto;
         width: 100%;
         box-sizing: border-box;
