@@ -59,6 +59,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     value=float(st.session_state.coord_lat),
                     format="%.5f",
                     step=0.01,
+                    key="t1_input_geo_lat",
                 )
             with t1_gc2:
                 t1_in_lon = st.number_input(
@@ -68,6 +69,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     value=float(st.session_state.coord_lon),
                     format="%.5f",
                     step=0.01,
+                    key="t1_input_geo_lon",
                 )
             with t1_gc3:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
