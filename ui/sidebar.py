@@ -53,7 +53,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 st.rerun()
 
         # Advanced Developer Specs (Cleanly Collapsed)
-        with st.expander("🛠️ Advanced Engine Specs", expanded=False):
+        with st.expander("Advanced Engine Specs", expanded=False):
             st.caption(
                 "• **Evidence Base:** 184 Empirical Trials (124 Success + 60 Failure Cases)\n"
                 "• **Physics Boundaries:** 10 Deterministic Biomechanical Limit Rules\n"
@@ -61,7 +61,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 "• **Explainability:** Native TreeSHAP Feature Attributions\n"
                 "• **Knowledge Engine:** LlamaIndex Vector RAG + Qwen 2.5 3B"
             )
-            
+
             docstore_file = os.path.join(config.STORAGE_DIR, "docstore.json")
             storage_status = "Persisted Index Available" if os.path.exists(docstore_file) else "Index Not Created"
             st.caption(f"• **Index Status:** {storage_status}")
