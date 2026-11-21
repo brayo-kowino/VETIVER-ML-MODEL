@@ -55,7 +55,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             map_style_choice = st.selectbox(
                 "Cartographic Basemap",
                 ["Positron (Light Boundaries & Roads)", "Voyager (Topography & Contours)", "Dark Matter (High-Contrast GIS)"],
-                index=0,
+                index=1,
                 help="Select your preferred cartographic tile style."
             )
         with top_c3:
