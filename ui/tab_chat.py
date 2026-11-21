@@ -21,6 +21,21 @@ def render_tab_chat(query_engine, rag_index, ollama_online: bool = True) -> None
     st.subheader("Vetiver", anchor=False)
     st.caption("Ask questions grounded in field trials, geotechnical standards, and your active site conditions.")
 
+    if not ollama_online:
+        st.markdown("""
+        <div style="min-height: 360px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: min(520px, 90%); text-align: center; border: 1px solid #FECACA; background: #FEF2F2; border-radius: 14px; padding: 38px 28px;">
+                <div style="font-family: 'Material Symbols Rounded'; font-size: 56px; line-height: 1; color: #DC2626;">block</div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: #991B1B; margin-top: 14px;">Vetiver AI unavailable</div>
+                <div style="font-size: 0.92rem; color: #7F1D1D; line-height: 1.55; margin-top: 8px;">
+                    The cloud deployment does not include a local Ollama runtime or the Qwen 2.5 3B model.
+                    The literature assistant and RAG chat require both to be running.
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
     # Auto-sanitize and clean legacy messages in session state
     if "messages" in st.session_state and st.session_state.messages:
         cleaned_messages = []
@@ -158,9 +173,7 @@ def render_tab_chat(query_engine, rag_index, ollama_online: bool = True) -> None
             )
 
     # 4. Conversation History & Chat Flow
-    if not ollama_online:
-        st.error("Ollama is not running. Please start Ollama (`ollama serve`) and refresh this page.", icon=":material/power_off:")
-    elif query_engine is None and rag_index is None:
+    if query_engine is None and rag_index is None:
         st.warning("Knowledge base index is not initialized. Ensure documents exist in `knowledge_base/`.", icon=":material/warning:")
     else:
         # Chat container ensures ALL messages stay ABOVE the input bar
