@@ -18,8 +18,8 @@ logger = logging.getLogger("vetiver")
 
 
 def render_tab_chat(query_engine, rag_index, ollama_online: bool = True) -> None:
-    st.subheader("AI Technical Consultation Copilot", anchor=False)
-    st.caption("Ask questions grounded in 60+ peer-reviewed field trials, geotechnical standards, and your active site conditions.")
+    st.subheader("VetiverChat Assistant", anchor=False)
+    st.caption("Ask questions grounded in field trials, geotechnical standards, and your active site conditions.")
 
     # Auto-sanitize and clean legacy messages in session state
     if "messages" in st.session_state and st.session_state.messages:

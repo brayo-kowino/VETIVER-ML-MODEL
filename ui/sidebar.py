@@ -10,7 +10,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
     """Render friendly sidebar readiness, guide, and collapsed developer telemetry."""
     with st.sidebar:
         st.subheader(":material/eco: Vetiver AI Platform")
-        st.caption("Bio-Engineering Decision Support & Technical Copilot")
+        st.caption("Geotechnical Site Assessment · 3D GIS Studio · AI Consultation ")
         st.divider()
 
         st.markdown("##### System Readiness")
@@ -22,15 +22,15 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 st.error("ML Model\n**Offline**", icon=":material/error:")
         with col_s2:
             if ollama_online and query_engine:
-                st.success("AI Copilot\n**Ready**", icon=":material/smart_toy:")
+                st.success("VetiverChat Assistant\n**Ready**", icon=":material/smart_toy:")
             elif ollama_online:
-                st.warning("AI Copilot\n**Indexing**", icon=":material/sync:")
+                st.warning("VetiverChat Assistant\n**Indexing**", icon=":material/sync:")
             else:
-                st.error("AI Copilot\n**Offline**", icon=":material/power_off:")
+                st.error("VetiverChat Assistant\n**Offline**", icon=":material/power_off:")
 
         st.divider()
 
-        st.markdown("##### 💡 How to Use")
+        st.markdown("##### How to Use")
         st.caption(
             "1. **Select Site:** Enter GPS coords or pick a corridor in Tab 1 or Tab 2.\n\n"
             "2. **Assess Stability:** Review slope safety factor (FoS), root anchoring & remediations.\n\n"

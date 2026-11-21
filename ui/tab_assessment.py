@@ -30,9 +30,8 @@ from corridor_engine import export_corridor_geojson
 
 
 def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
-    st.subheader("Slope Stability & Bio-Engineering Assessment", anchor=False)
-    st.caption("AI-Powered Geotechnical Suitability · Wu-Waldron Root Reinforcement · Limit Equilibrium Simulation")
-
+    st.subheader("Site Suitability Assessment", anchor=False)
+   
     # ── STEP 1: SELECT OR INGEST LOCATION ──────────────────────
     with st.container(border=True):
         st.markdown("##### :material/place: Step 1: Select or Ingest Project Site")
@@ -41,8 +40,8 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             "Location Ingestion Mode",
             [
                 "📍 GPS Coordinates (Auto-Detect)",
-                "🗺️ Regional Benchmark Sites",
-                "⚡ Quick Corridor Shortcuts",
+                "Regional Benchmark Sites",
+                "Quick Corridor Shortcuts",
             ],
             horizontal=True,
             label_visibility="collapsed",
@@ -105,7 +104,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     icon=":material/check_circle:"
                 )
 
-        elif ingest_mode == "🗺️ Regional Benchmark Sites":
+        elif ingest_mode == "Regional Benchmark Sites":
             all_hotspots = load_regional_hotspots(hotspot_mtime)
             if all_hotspots:
                 st.caption("Select a pre-calculated East Africa civil corridor or benchmark location:")

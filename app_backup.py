@@ -1962,7 +1962,7 @@ with tab1:
 # TAB 2: REGIONAL HOTSPOTS & 3D GIS MAP
 # =======================================================
 with tab2:
-    st.subheader("3D Regional Bio-Engineering Hotspots & GIS Studio", anchor=False)
+    st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
 
     hotspots = load_regional_hotspots(hotspot_mtime)
     if not hotspots:

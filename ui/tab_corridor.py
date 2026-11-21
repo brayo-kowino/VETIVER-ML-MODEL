@@ -25,7 +25,7 @@ from corridor_engine import (
 
 
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
-    st.subheader("3D Regional Bio-Engineering Hotspots & GIS Studio", anchor=False)
+    st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
 
     hotspots = load_regional_hotspots(hotspot_mtime)
     if not hotspots:
