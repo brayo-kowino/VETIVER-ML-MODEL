@@ -61,6 +61,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
                 "• **Explainability:** Native TreeSHAP Feature Attributions\n"
                 "• **Knowledge Engine:** LlamaIndex Vector RAG + Qwen 2.5 3B"
             )
+            
             docstore_file = os.path.join(config.STORAGE_DIR, "docstore.json")
             storage_status = "Persisted Index Available" if os.path.exists(docstore_file) else "Index Not Created"
             st.caption(f"• **Index Status:** {storage_status}")
