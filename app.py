@@ -58,9 +58,9 @@ render_sidebar(cb_model, ollama_online, query_engine)
 
 # ── 6. Render Application Tabs ─────────────────────────
 tab1, tab2, tab3 = st.tabs([
-    ":material/analytics: Site Assessment & Slope Stability",
-    ":material/map: 3D GIS Studio & Regional Hotspots",
-    ":material/smart_toy: AI Consultation Copilot",
+    ":material/analytics: Site Assessment",
+    ":material/map: 3D GIS Studio",
+    ":material/smart_toy: VetiverChat Assistant",
 ])
 
 with tab1:
