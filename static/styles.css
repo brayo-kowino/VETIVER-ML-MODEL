@@ -33,7 +33,7 @@
 
     /* Tabs styling — Modern clean line with Material Icons */
     .stTabs {
-        margin-top: 22px !important;
+        margin-top: 8px !important;
         padding-top: 6px !important;
     }
     .stTabs [data-baseweb="tab-list"] {
