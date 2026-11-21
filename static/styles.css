@@ -18,6 +18,10 @@
     }
 
     /* Tabs styling — Modern clean line with Material Icons */
+    .stTabs {
+        margin-top: 22px !important;
+        padding-top: 6px !important;
+    }
     .stTabs [data-baseweb="tab-list"] {
         gap: 14px !important;
         border-bottom: 2px solid #E2E8F0 !important;
