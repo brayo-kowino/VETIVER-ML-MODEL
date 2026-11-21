@@ -74,22 +74,22 @@ def get_two_tier_remediations(assessment: dict) -> dict:
 
     stewardship = [
         {
-            "icon": ":material/wb_sunny:",
+            "icon": "",
             "title": "Strict Solar Exposure (Obligate Heliophyte)",
             "body": "Vetiver is an obligate C4 sun grass requiring **>= 6 hours of direct sunlight daily**. Never plant under dense tree canopies, under bridges/overpasses, or in permanent structural shade. Light deficits cause severe etiolation, chlorosis, and 90–100% mortality within 4 months.",
         },
         {
-            "icon": ":material/fence:",
+            "icon": "",
             "title": "12-Month Livestock Grazing Exclusion",
             "body": "Tender juvenile slips (0–12 months) are palatable to cattle, goats, and wildlife. Enforce **mandatory 12-month perimeter live fencing** (e.g. *Euphorbia tirucalli*, thorny *Acacia*, or wire mesh). Once mature, coarse siliceous leaves become unpalatable.",
         },
         {
-            "icon": ":material/pest_control:",
+            "icon": "",
             "title": "Termite & Subterranean Pest Defense",
             "body": "In semi-arid savannahs or dry cut-slopes, subterranean termites can sever tender young root shoots. Dip bare-root slips in an organic neem oil solution or entomopathogenic biopesticide (*Metarhizium anisopliae*) prior to planting.",
         },
         {
-            "icon": ":material/verified:",
+            "icon": "",
             "title": "Certified Slip Quality Standards",
             "body": "Plant certified slips with a minimum of **3 healthy tillers**, roots trimmed to **10 cm**, and leaf foliage pruned back to **15–20 cm** to minimize transplant transpiration stress and stimulate vigorous basal tillering.",
         },
