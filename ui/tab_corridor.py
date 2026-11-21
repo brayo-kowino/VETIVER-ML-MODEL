@@ -16,6 +16,18 @@ from services.assessment_service import run_assessment
 from services.model_service import load_regional_hotspots
 from geospatial_resolver import resolve_coordinate_geotechnics, search_location
 from geotechnical_engine import calculate_slope_stability, calculate_field_boq
+
+
+def sync_coordinate_inputs(latitude: float, longitude: float) -> None:
+    """Synchronize coordinate state and widget values across the app."""
+    st.session_state.coord_lat = latitude
+    st.session_state.coord_lon = longitude
+    st.session_state.t2_in_lat = latitude
+    st.session_state.t2_in_lon = longitude
+    st.session_state.t1_input_geo_lat = latitude
+    st.session_state.t1_input_geo_lon = longitude
+
+
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
     st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
 
@@ -119,8 +131,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     if st.button("Use selected location", type="primary", width="stretch", icon=":material/my_location:", key="btn_t2_use_search_result"):
                         search_lat = selected_result["latitude"]
                         search_lon = selected_result["longitude"]
-                        st.session_state.coord_lat = search_lat
-                        st.session_state.coord_lon = search_lon
+                        sync_coordinate_inputs(search_lat, search_lon)
                         c_site = resolve_coordinate_geotechnics(search_lat, search_lon)
                         st.session_state.custom_coord_site = c_site
                         st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -167,8 +178,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 # Corridor shortcuts row
                 cp1, cp2, cp3, cp4, cp5, cp6 = st.columns(6)
                 if cp1.button("Nairobi", width="stretch", key="t2_pill_nrb"):
-                    st.session_state.coord_lat = -1.2921
-                    st.session_state.coord_lon = 36.8219
+                    sync_coordinate_inputs(-1.2921, 36.8219)
                     c_site = resolve_coordinate_geotechnics(-1.2921, 36.8219)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -181,8 +191,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = True
                     st.rerun()
                 if cp2.button("Samburu", width="stretch", key="t2_pill_smb"):
-                    st.session_state.coord_lat = 1.0000
-                    st.session_state.coord_lon = 36.8219
+                    sync_coordinate_inputs(1.0000, 36.8219)
                     c_site = resolve_coordinate_geotechnics(1.0000, 36.8219)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -195,8 +204,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = True
                     st.rerun()
                 if cp3.button("Eldoret", width="stretch", key="t2_pill_eld"):
-                    st.session_state.coord_lat = 0.5143
-                    st.session_state.coord_lon = 35.2698
+                    sync_coordinate_inputs(0.5143, 35.2698)
                     c_site = resolve_coordinate_geotechnics(0.5143, 35.2698)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -209,8 +217,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = True
                     st.rerun()
                 if cp4.button("Naivasha", width="stretch", key="t2_pill_nvs"):
-                    st.session_state.coord_lat = -0.7172
-                    st.session_state.coord_lon = 36.4312
+                    sync_coordinate_inputs(-0.7172, 36.4312)
                     c_site = resolve_coordinate_geotechnics(-0.7172, 36.4312)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -223,8 +230,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = True
                     st.rerun()
                 if cp5.button("Embu", width="stretch", key="t2_pill_emb"):
-                    st.session_state.coord_lat = -0.5342
-                    st.session_state.coord_lon = 37.4544
+                    sync_coordinate_inputs(-0.5342, 37.4544)
                     c_site = resolve_coordinate_geotechnics(-0.5342, 37.4544)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -237,8 +243,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = True
                     st.rerun()
                 if cp6.button("Garissa", width="stretch", key="t2_pill_grs"):
-                    st.session_state.coord_lat = -0.4532
-                    st.session_state.coord_lon = 39.6461
+                    sync_coordinate_inputs(-0.4532, 39.6461)
                     c_site = resolve_coordinate_geotechnics(-0.4532, 39.6461)
                     st.session_state.custom_coord_site = c_site
                     st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -253,8 +258,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
 
                 if resolve_btn:
                     with st.spinner(f"Querying environmental providers for ({in_lat:.4f}°N, {in_lon:.4f}°E)..."):
-                        st.session_state.coord_lat = in_lat
-                        st.session_state.coord_lon = in_lon
+                        sync_coordinate_inputs(in_lat, in_lon)
                         c_site = resolve_coordinate_geotechnics(in_lat, in_lon)
                         st.session_state.custom_coord_site = c_site
                         st.session_state.preset_soil = c_site["soil_mechanical_class"]
@@ -487,6 +491,8 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 ):
                     st.session_state.processed_map_selection = selection_key
                     st.session_state.selected_hotspot_id = clicked_id
+                    clicked_hotspot = next(h for h in filtered_hotspots if h["id"] == clicked_id)
+                    sync_coordinate_inputs(clicked_hotspot["latitude"], clicked_hotspot["longitude"])
                     st.session_state.custom_coord_site = None
                     st.session_state.pan_to_custom = False
                     st.session_state.current_assessment = None
@@ -540,6 +546,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     chosen_h = next((h for h in filtered_hotspots if f"{h['county_region']}: {h['name']}" == sel_hs_name), filtered_hotspots[cur_idx])
                     if chosen_h["id"] != st.session_state.selected_hotspot_id:
                         st.session_state.selected_hotspot_id = chosen_h["id"]
+                        sync_coordinate_inputs(chosen_h["latitude"], chosen_h["longitude"])
                         st.session_state.current_assessment = None
                         st.session_state.custom_assessment_result = None
                         selected_hs = chosen_h
