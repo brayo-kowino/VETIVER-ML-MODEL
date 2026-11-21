@@ -149,6 +149,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lat),
                         format="%.5f",
                         step=0.01,
+                        key="t2_in_lat",
                     )
                 with g_c2:
                     in_lon = st.number_input(
@@ -158,6 +159,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lon),
                         format="%.5f",
                         step=0.01,
+                        key="t2_in_lon",
                     )
                 with g_c3:
                     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
