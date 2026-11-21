@@ -161,27 +161,54 @@ def search_location(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     if not query:
         return []
 
+    local_aliases = {
+        "juja": (-1.1014905, 37.0159462),
+        "jkuat": (-1.0957, 37.0140),
+        "jkuat juja": (-1.0957, 37.0140),
+    }
+    alias_key = query.lower().strip()
+    if alias_key in local_aliases:
+        latitude, longitude = local_aliases[alias_key]
+        return [{
+            "display_name": "Juja, Kiambu, Kenya" if alias_key != "jkuat" else "JKUAT, Juja, Kiambu, Kenya",
+            "latitude": latitude,
+            "longitude": longitude,
+            "type": "landmark" if alias_key != "juja" else "town",
+        }]
+
     try:
         url = "https://nominatim.openstreetmap.org/search"
         headers = {"User-Agent": "VetiverBioEngDecisionSupport/1.0"}
-        params = {"q": query, "format": "jsonv2", "addressdetails": 1, "limit": limit}
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url, params=params, headers=headers)
-            if resp.status_code != 200:
-                return []
+        queries = [query]
+        if not any(code in query.lower() for code in ["kenya", "ethiopia", "zambia", "zimbabwe", "uganda", "tanzania"]):
+            queries.append(f"{query}, Kenya")
 
-            results = []
-            for item in resp.json():
-                try:
-                    results.append({
-                        "display_name": item.get("display_name", query),
-                        "latitude": float(item["lat"]),
-                        "longitude": float(item["lon"]),
-                        "type": item.get("type"),
-                    })
-                except (KeyError, TypeError, ValueError):
+        with httpx.Client(timeout=4.0) as client:
+            for search_query in queries:
+                params = {
+                    "q": search_query,
+                    "format": "jsonv2",
+                    "addressdetails": 1,
+                    "limit": limit,
+                }
+                resp = client.get(url, params=params, headers=headers)
+                if resp.status_code != 200:
                     continue
-            return results
+
+                results = []
+                for item in resp.json():
+                    try:
+                        results.append({
+                            "display_name": item.get("display_name", query),
+                            "latitude": float(item["lat"]),
+                            "longitude": float(item["lon"]),
+                            "type": item.get("type"),
+                        })
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                if results:
+                    return results
+            return []
     except Exception as exc:
         logger.debug("Nominatim location search skipped: %s", exc)
         return []
