@@ -460,7 +460,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
                 # Tier 2: Universal Field Stewardship & Biological Prerequisites
-                st.markdown("#### :material/shield: Tier 2: Universal Field Stewardship & Environmental Prerequisites")
+                st.markdown("#### Tier 2: Universal Field Stewardship & Environmental Prerequisites")
                 st.caption("Essential operational field standards required on every bioengineering installation to prevent preventable vegetative failure:")
 
                 s_c1, s_c2 = st.columns(2)
@@ -469,7 +469,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     with target_col:
                         st.markdown(f"""
                         <div style="background: #F8FAF9; border: 1px solid #E2E8F0; border-left: 3px solid #16A34A; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
-                            <div style="font-weight: 700; font-size: 0.92rem; color: #0F172A; margin-bottom: 4px;">{item['icon']} {item['title']}</div>
+                            <div style="font-weight: 700; font-size: 0.92rem; color: #0F172A; margin-bottom: 4px;">{item['title']}</div>
                             <div style="font-size: 0.86rem; color: #475569; line-height: 1.4;">{item['body']}</div>
                         </div>
                         """, unsafe_allow_html=True)
