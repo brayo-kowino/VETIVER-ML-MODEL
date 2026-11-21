@@ -37,7 +37,6 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
         )
 
         st.divider()
-
         # Chat and Session Actions
         if st.session_state.get("messages"):
             chat_md = export_chat_markdown(st.session_state.messages)
