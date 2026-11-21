@@ -161,21 +161,6 @@ def search_location(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     if not query:
         return []
 
-    local_aliases = {
-        "juja": (-1.1014905, 37.0159462),
-        "jkuat": (-1.0957, 37.0140),
-        "jkuat juja": (-1.0957, 37.0140),
-    }
-    alias_key = query.lower().strip()
-    if alias_key in local_aliases:
-        latitude, longitude = local_aliases[alias_key]
-        return [{
-            "display_name": "Juja, Kiambu, Kenya" if alias_key != "jkuat" else "JKUAT, Juja, Kiambu, Kenya",
-            "latitude": latitude,
-            "longitude": longitude,
-            "type": "landmark" if alias_key != "juja" else "town",
-        }]
-
     try:
         url = "https://nominatim.openstreetmap.org/search"
         headers = {"User-Agent": "VetiverBioEngDecisionSupport/1.0"}
