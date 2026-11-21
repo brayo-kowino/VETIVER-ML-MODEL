@@ -71,7 +71,7 @@ The project is structured into **two core functional divisions** comprising **6 
   * Maintain Streamlit application styling, UI responsiveness, and real-time state.
   * Containerize the platform using Docker and Docker Compose.
   * Prepare the **JKUAT Desktop Workstation environment**:
-    * Configure local Ollama daemon as a persistent background service (Windows NSSM or Linux systemd).
+    * Configure local Ollama as a persistent background service (Windows NSSM or Linux systemd).
     * Optimize CPU thread pinning (`num_thread`) and GPU offloading (if dedicated NVIDIA hardware is present).
     * Configure local network tunneling (Cloudflare Tunnel or ngrok) for mobile/WhatsApp webhook routing.
 * **Key Tasks:**

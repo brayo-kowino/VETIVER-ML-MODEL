@@ -62,10 +62,10 @@ def find_nearest_known_hotspot(lat: float, lon: float, max_distance_km: float = 
 
 
 def fetch_live_elevation_and_climate(lat: float, lon: float) -> Optional[Dict[str, Any]]:
-    """Query Open-Meteo elevation and climate APIs with a fast 1.5s timeout."""
+    """Query Open-Meteo elevation and climate APIs with a 2.5s timeout."""
     try:
         elev_url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
-        with httpx.Client(timeout=1.5) as client:
+        with httpx.Client(timeout=2.5) as client:
             resp_e = client.get(elev_url)
             elevation = None
             if resp_e.status_code == 200:
@@ -101,13 +101,13 @@ def fetch_live_elevation_and_climate(lat: float, lon: float) -> Optional[Dict[st
 
 
 def fetch_live_soilgrids(lat: float, lon: float) -> Optional[Dict[str, Any]]:
-    """Query ISRIC SoilGrids REST API v2.0 for clay, sand, silt, and pH."""
+    """Query ISRIC SoilGrids REST API v2.0 for clay, sand, silt, and pH with a 2.5s timeout."""
     try:
         url = (
             f"https://rest.isric.org/soilgrids/v2.0/properties/query?"
             f"lat={lat}&lon={lon}&property=clay&property=sand&property=silt&property=phh2o&depth=0-5cm&depth=15-30cm"
         )
-        with httpx.Client(timeout=1.5) as client:
+        with httpx.Client(timeout=2.5) as client:
             resp = client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
@@ -137,11 +137,11 @@ def fetch_live_soilgrids(lat: float, lon: float) -> Optional[Dict[str, Any]]:
 
 
 def fetch_live_reverse_geocode(lat: float, lon: float) -> Optional[Dict[str, str]]:
-    """Query OpenStreetMap Nominatim for county/state and country."""
+    """Query OpenStreetMap Nominatim for county/state and country with a 2.5s timeout."""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
         headers = {"User-Agent": "VetiverBioEngDecisionSupport/1.0"}
-        with httpx.Client(timeout=1.5) as client:
+        with httpx.Client(timeout=2.5) as client:
             resp = client.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
@@ -182,6 +182,40 @@ def resolve_offline_gis_matrix(lat: float, lon: float) -> Dict[str, Any]:
             "notes": "Hyper-saline trona alkaline crust zone. Reverse osmotic desiccation boundary.",
         }
 
+    # Domain 1b: Nairobi Metropolitan Core & Upper Uplands
+    if -1.40 <= lat <= -1.15 and 36.65 <= lon <= 37.10:
+        return {
+            "county": "Nairobi County",
+            "region": "Nairobi Metropolitan & Central Uplands",
+            "country": "Kenya",
+            "elevation_m": 1680,
+            "soil_mechanical_class": "Cohesive Clay / Nitisol / Laterite",
+            "climate_rainfall_zone": "Sub-Humid / Bimodal (700–1400 mm/yr)",
+            "establishment_moisture": "Adequate (Irrigated / In-Season Rain)",
+            "hydrological_stress": "Normal Slope / Well-Drained",
+            "salinity_tier": "Non-Saline (< 2 dS/m)",
+            "est_salinity_ec_ds_m": 0.4,
+            "default_hazard": "Shallow Slope / Embankment Slip (0.3–1.5 m)",
+            "notes": "Nairobi volcanic red clay (Nitisol) over trachytic tuffs. Highly suited for road cuts & slope stabilization.",
+        }
+
+    # Domain 1c: Athi River, Kitengela & Kapiti Plains (Expansive Vertisol / Black Cotton Basin)
+    if -1.65 <= lat <= -1.35 and 36.85 <= lon <= 37.35:
+        return {
+            "county": "Machakos / Kajiado County",
+            "region": "Kapiti Plains & Athi River Industrial Corridor",
+            "country": "Kenya",
+            "elevation_m": 1520,
+            "soil_mechanical_class": "Sandy Clay / Loam",
+            "climate_rainfall_zone": "Semi-Arid (300–700 mm/yr)",
+            "establishment_moisture": "Adequate (Irrigated / In-Season Rain)",
+            "hydrological_stress": "Normal Slope / Well-Drained",
+            "salinity_tier": "Non-Saline (< 2 dS/m)",
+            "est_salinity_ec_ds_m": 0.8,
+            "default_hazard": "Surficial Sheet & Rill Erosion (< 0.3 m)",
+            "notes": "Expansive smectite clay (Black Cotton Soil) prone to seasonal shrink-swell cracks and road shoulder slumping.",
+        }
+
     # Domain 2: Rift Valley Pumice Axis (Menengai, Nakuru, Naivasha, Longonot, Gilgil)
     if -0.9 <= lat <= 0.4 and 35.8 <= lon <= 36.5:
         return {
@@ -197,6 +231,23 @@ def resolve_offline_gis_matrix(lat: float, lon: float) -> Dict[str, Any]:
             "est_salinity_ec_ds_m": 0.6,
             "default_hazard": "Shallow Slope / Embankment Slip (0.3–1.5 m)",
             "notes": "Volcanic pumice lapilli & porous tuff. High subterranean piping vulnerability.",
+        }
+
+    # Domain 2b: Western Mau Escarpment & Kericho Tea Belt
+    if -0.6 <= lat <= 0.0 and 35.1 <= lon <= 35.75:
+        return {
+            "county": "Kericho / Bomet County",
+            "region": "Western Mau Escarpment & Tea Highlands",
+            "country": "Kenya",
+            "elevation_m": 2050,
+            "soil_mechanical_class": "Cohesive Clay / Nitisol / Laterite",
+            "climate_rainfall_zone": "Humid / Tropical Monsoon (>1400 mm/yr)",
+            "establishment_moisture": "Adequate (Irrigated / In-Season Rain)",
+            "hydrological_stress": "Normal Slope / Well-Drained",
+            "salinity_tier": "Non-Saline (< 2 dS/m)",
+            "est_salinity_ec_ds_m": 0.3,
+            "default_hazard": "Shallow Slope / Embankment Slip (0.3–1.5 m)",
+            "notes": "Steep humid lateritic cut-slopes with annual rainfall >1,600 mm. Exceptional root anchoring cohesion.",
         }
 
     # Domain 3b: North Rift Plateau & Highland Grain Belt (Eldoret, Kitale, Uasin Gishu, Trans-Nzoia)
@@ -317,6 +368,23 @@ def resolve_offline_gis_matrix(lat: float, lon: float) -> Dict[str, Any]:
             "notes": "Highland plateau plateau soils over metamorphic basement. Suitable for slope stabilization with seasonal rain.",
         }
 
+    # Domain 6c: Eastern Lowlands & Garissa Basin (Garissa, Tana River, Kitui East)
+    if -2.2 <= lat <= 1.6 and 38.6 <= lon <= 41.5:
+        return {
+            "county": "Garissa / Tana River County",
+            "region": "Garissa Arid Lowlands & Tana River Valley",
+            "country": "Kenya",
+            "elevation_m": 220,
+            "soil_mechanical_class": "Coarse Sand / Loose Pumice",
+            "climate_rainfall_zone": "Hyper-Arid / Desert (<300 mm/yr)",
+            "establishment_moisture": "Severe Drought / Zero Watering",
+            "hydrological_stress": "Normal Slope / Well-Drained",
+            "salinity_tier": "Slight to Moderate (2–8 dS/m)",
+            "est_salinity_ec_ds_m": 3.5,
+            "default_hazard": "Surficial Sheet & Rill Erosion (< 0.3 m)",
+            "notes": "Arid alluvial sands & seasonal gullying along northern pastoral road cuts. 60-day establishment irrigation mandatory.",
+        }
+
     # Domain 7: Northern Deserts & Lowland Arid Basins (Turkana, Marsabit Chalbi, Wajir Lowlands)
     if 1.6 < lat <= 4.8 and 35.0 <= lon <= 41.5:
         return {
@@ -376,6 +444,15 @@ def resolve_offline_gis_matrix(lat: float, lon: float) -> Dict[str, Any]:
     }
 
 
+try:
+    import streamlit as st
+    _cache_dec = st.cache_data(ttl=3600, show_spinner=False)
+except Exception:
+    def _cache_dec(f):
+        return f
+
+
+@_cache_dec
 def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
     """
     Main pipeline to resolve arbitrary GPS coordinates:

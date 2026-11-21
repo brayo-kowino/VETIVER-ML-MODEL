@@ -1,0 +1,307 @@
+    /* Google Fonts & Root Design Tokens */
+    :root {
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --bg-surface: #F8FAFC;
+        --bg-card: #FFFFFF;
+        --border-subtle: #E2E8F0;
+        --border-strong: #CBD5E1;
+        --brand-emerald: #16A34A;
+        --brand-emerald-dark: #14532D;
+        --brand-emerald-light: #DCFCE7;
+    }
+
+    /* Global block padding optimization */
+    .block-container {
+        padding-top: 1.8rem !important;
+        padding-bottom: 2.2rem !important;
+        max-width: 98% !important;
+    }
+
+    /* Tabs styling — Modern clean line with Material Icons */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 14px !important;
+        border-bottom: 2px solid #E2E8F0 !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 46px !important;
+        border-radius: 8px 8px 0px 0px !important;
+        font-weight: 600 !important;
+        font-size: 0.92rem !important;
+        color: #64748B !important;
+        padding: 0 16px !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #16A34A !important;
+        border-bottom: 3px solid #16A34A !important;
+        background: transparent !important;
+    }
+
+    /* Studio Card Surface */
+    .studio-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        margin-bottom: 14px;
+    }
+
+    /* Studio Inspector Docked Card */
+    .studio-inspector {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Executive Verdict Banners */
+    .verdict-banner-suitable {
+        background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+        border: 1.5px solid #86EFAC;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 3px 12px rgba(22, 163, 74, 0.08);
+    }
+    .verdict-banner-unsuitable {
+        background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);
+        border: 1.5px solid #FECACA;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 3px 12px rgba(220, 38, 38, 0.08);
+    }
+
+    /* KPI metric chips */
+    .kpi-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+    }
+    .kpi-chip {
+        flex: 1;
+        min-width: 130px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 8px;
+        padding: 10px 12px;
+        text-align: center;
+    }
+    .kpi-chip-title {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #475569;
+    }
+    .kpi-chip-val {
+        font-size: 1.12rem;
+        font-weight: 800;
+        margin-top: 2px;
+    }
+
+    /* Studio Badges */
+    .studio-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+    }
+    .badge-suitable {
+        background: #DCFCE7;
+        color: #15803D;
+        border: 1px solid #BBF7D0;
+    }
+    .badge-unsuitable {
+        background: #FEE2E2;
+        color: #B91C1C;
+        border: 1px solid #FECACA;
+    }
+    .badge-amber {
+        background: #FEF3C7;
+        color: #B45309;
+        border: 1px solid #FDE68A;
+    }
+    .badge-blue {
+        background: #E0F2FE;
+        color: #0369A1;
+        border: 1px solid #BAE6FD;
+    }
+
+    /* Form inputs and buttons polish */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div {
+        border-radius: 8px !important;
+        border-color: #CBD5E1 !important;
+    }
+    div.stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        transition: all 0.15s ease-in-out !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: #16A34A !important;
+        border: 1px solid #15803D !important;
+        box-shadow: 0 1px 3px rgba(22, 163, 74, 0.22) !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: #15803D !important;
+        box-shadow: 0 3px 8px rgba(22, 163, 74, 0.32) !important;
+    }
+
+    /* =======================================================
+       MODERN STUDIO CHAT INTERFACE DESIGN SYSTEM
+       ======================================================= */
+    
+    /* Modern Streamlit Chat Message Styling */
+    /* Outer container: completely transparent with NO border to eliminate double boundaries */
+    div[data-testid="stChatMessage"] {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 0 16px 0 !important;
+        width: 100% !important;
+    }
+
+    /* USER MESSAGE: Pushed to the RIGHT (row-reverse) */
+    div[aria-label="Chat message from user"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+    div[data-testid="stChatMessage"]:has([aria-label*="user"]) {
+        display: flex !important;
+        flex-direction: row-reverse !important;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        margin-bottom: 14px !important;
+        width: 100% !important;
+    }
+    /* Single clean right-aligned user bubble */
+    div[aria-label="Chat message from user"] div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([aria-label*="user"]) div[data-testid="stChatMessageContent"] {
+        background-color: #EFF6FF !important;
+        border: 1.5px solid #BFDBFE !important;
+        border-radius: 18px 4px 18px 18px !important;
+        padding: 10px 16px !important;
+        max-width: 72% !important;
+        box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08) !important;
+    }
+    div[aria-label="Chat message from user"] div[data-testid="stChatMessageContent"] *,
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"] * {
+        color: #1E3A8A !important;
+        font-size: 0.94rem !important;
+        line-height: 1.55 !important;
+    }
+    div[aria-label="Chat message from user"] div[data-testid*="Avatar"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid*="Avatar"],
+    div[data-testid="stChatMessage"]:has([aria-label*="user"]) div[data-testid*="Avatar"] {
+        background-color: #DBEAFE !important;
+        color: #1D4ED8 !important;
+        border: 1px solid #BFDBFE !important;
+        border-radius: 50% !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ASSISTANT MESSAGE: Pushed to the LEFT (row) */
+    div[aria-label="Chat message from assistant"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
+    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+    }
+    /* Single clean left-aligned assistant card */
+    div[aria-label="Chat message from assistant"] div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
+    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) div[data-testid="stChatMessageContent"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-left: 4px solid #16A34A !important;
+        border-radius: 4px 18px 18px 18px !important;
+        padding: 14px 18px !important;
+        max-width: 85% !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    }
+    div[aria-label="Chat message from assistant"] div[data-testid="stChatMessageContent"] *,
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"] * {
+        color: #1E293B !important;
+        font-size: 0.94rem !important;
+        line-height: 1.65 !important;
+    }
+
+    /* Markdown List & Bullet Point Typography inside chat messages */
+    div[data-testid="stChatMessageContent"] ul,
+    div[data-testid="stChatMessageContent"] ol {
+        margin: 8px 0 10px 0 !important;
+        padding-left: 22px !important;
+    }
+    div[data-testid="stChatMessageContent"] li {
+        margin-bottom: 8px !important;
+        line-height: 1.6 !important;
+        color: #1E293B !important;
+    }
+    div[data-testid="stChatMessageContent"] li strong {
+        color: #0F172A !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stChatMessageContent"] p {
+        margin-bottom: 8px !important;
+        line-height: 1.65 !important;
+    }
+    div[aria-label="Chat message from assistant"] div[data-testid*="Avatar"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid*="Avatar"],
+    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) div[data-testid*="Avatar"] {
+        background-color: #DCFCE7 !important;
+        color: #15803D !important;
+        border: 1px solid #86EFAC !important;
+        border-radius: 50% !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Floating Chat Input with Smooth Focus Ring */
+    div[data-testid="stChatInput"] {
+        border-radius: 28px !important;
+        border: 1.5px solid #CBD5E1 !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+        background-color: #FFFFFF !important;
+        padding: 4px 10px !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    div[data-testid="stChatInput"]:focus-within {
+        border-color: #16A34A !important;
+        box-shadow: 0 4px 24px rgba(22, 163, 74, 0.18) !important;
+    }
+    div[data-testid="stChatInput"] textarea {
+        font-size: 0.92rem !important;
+        color: #1E293B !important;
+        line-height: 1.5 !important;
+    }
+    div[data-testid="stChatInput"] button {
+        border-radius: 9999px !important;
+        background-color: #16A34A !important;
+        color: #FFFFFF !important;
+        transition: transform 0.15s ease !important;
+    }
+    div[data-testid="stChatInput"] button:hover {
+        background-color: #15803D !important;
+        transform: scale(1.06) !important;
+    }
