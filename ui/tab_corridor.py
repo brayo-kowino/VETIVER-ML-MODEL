@@ -16,14 +16,6 @@ from services.assessment_service import run_assessment
 from services.model_service import load_regional_hotspots
 from geospatial_resolver import resolve_coordinate_geotechnics
 from geotechnical_engine import calculate_slope_stability, calculate_field_boq
-from corridor_engine import (
-    BUILTIN_CORRIDORS,
-    analyze_corridor_waypoints,
-    generate_corridor_profile_fig,
-    export_corridor_geojson,
-)
-
-
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
     st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
 
@@ -77,89 +69,6 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
 
         cur_idx = next((i for i, h in enumerate(filtered_hotspots) if h["id"] == st.session_state.selected_hotspot_id), 0)
         selected_hs = filtered_hotspots[cur_idx]
-
-        # ── LINEAR INFRASTRUCTURE CORRIDOR BATCH PROFILER ──
-        with st.expander(":material/alt_route: Linear Infrastructure Corridor Batch Profiler (Highway Alignments & Cuttings)", expanded=False):
-            st.markdown(
-                "Evaluate linear civil transport infrastructure alignments across chainages. Automatically batches "
-                "coordinate resolution, USCS soil transitions, elevation profiles, and geotechnical suitability for road cuts and railway batters."
-            )
-            cor_c1, cor_c2, cor_c3 = st.columns([2.0, 1.2, 1.0])
-            with cor_c1:
-                cor_choice = st.selectbox(
-                    "Select Highway Alignment Corridor",
-                    list(BUILTIN_CORRIDORS.keys()),
-                    format_func=lambda k: BUILTIN_CORRIDORS[k]["name"],
-                    key="sel_infra_corridor"
-                )
-            with cor_c2:
-                uploaded_corridor_csv = st.file_uploader("Or Upload Custom Corridor (.csv)", type=["csv"], help="CSV with columns: lat, lon, chainage_km (optional), station (optional)", key="upload_corridor_csv")
-            with cor_c3:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                run_corridor_btn = st.button("Run Batch Profiler", type="primary", icon=":material/play_arrow:", width="stretch", key="btn_run_corridor")
-
-            if run_corridor_btn or "df_corridor_cache" in st.session_state:
-                if run_corridor_btn:
-                    with st.spinner("Batch evaluating geotechnical parameters along corridor chainages..."):
-                        if uploaded_corridor_csv is not None:
-                            try:
-                                in_df = pd.read_csv(uploaded_corridor_csv)
-                                custom_wps = []
-                                for idx, r in in_df.iterrows():
-                                    custom_wps.append({
-                                        "chainage_km": r.get("chainage_km", idx * 5),
-                                        "station": r.get("station", f"Station {idx+1}"),
-                                        "lat": float(r["lat"] if "lat" in r else r["latitude"]),
-                                        "lon": float(r["lon"] if "lon" in r else r["longitude"]),
-                                        "hazard": r.get("hazard", "Shallow Slope / Embankment Slip (0.3–1.5 m)")
-                                    })
-                                res_df = analyze_corridor_waypoints(custom_wps, run_assessment)
-                                st.session_state.df_corridor_cache = res_df
-                                st.session_state.corridor_cache_name = "Custom Uploaded Corridor"
-                            except Exception as e:
-                                st.error(f"Error parsing uploaded CSV: {e}", icon=":material/error:")
-                        else:
-                            active_cor = BUILTIN_CORRIDORS[cor_choice]
-                            res_df = analyze_corridor_waypoints(active_cor["waypoints"], run_assessment)
-                            st.session_state.df_corridor_cache = res_df
-                            st.session_state.corridor_cache_name = active_cor["name"]
-
-                if "df_corridor_cache" in st.session_state:
-                    c_df = st.session_state.df_corridor_cache
-                    c_name = st.session_state.get("corridor_cache_name", "Highway Alignment")
-
-                    c_fig = generate_corridor_profile_fig(c_df, c_name)
-                    st.plotly_chart(c_fig, width="stretch")
-
-                    st.markdown("##### :material/table_chart: Corridor Geotechnical Chainage Schedule")
-                    st.dataframe(
-                        c_df[["Chainage (km)", "Station Name", "Elevation (m)", "USCS Soil Class", "Verdict", "Model Confidence", "Category", "FoS Boost", "Prescribed Engineering Protocol"]],
-                        hide_index=True,
-                        width="stretch"
-                    )
-
-                    cor_btn_c1, cor_btn_c2 = st.columns(2)
-                    with cor_btn_c1:
-                        cor_csv = c_df.to_csv(index=False).encode("utf-8")
-                        st.download_button(
-                            label="Download Corridor Schedule (.csv)",
-                            data=cor_csv,
-                            file_name=f"corridor_geotechnical_profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv",
-                            icon=":material/download:",
-                            width="stretch",
-                        )
-                    with cor_btn_c2:
-                        cor_geojson = export_corridor_geojson(c_df, c_name)
-                        st.download_button(
-                            label="Download GIS Route (.geojson)",
-                            data=cor_geojson,
-                            file_name=f"corridor_gis_route_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson",
-                            mime="application/geo+json",
-                            icon=":material/map:",
-                            width="stretch",
-                            help="Export standard GeoJSON vector alignment and waypoint parameters for QGIS / ArcGIS."
-                        )
 
         # ── 62 / 38 SPLIT-SCREEN STUDIO LAYOUT ──
         col_map, col_inspector = st.columns([1.58, 1.0], gap="medium")
