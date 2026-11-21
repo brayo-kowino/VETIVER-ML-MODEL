@@ -60,7 +60,7 @@ render_sidebar(cb_model, ollama_online, query_engine)
 tab1, tab2, tab3 = st.tabs([
     ":material/analytics: Site Assessment",
     ":material/map: 3D GIS Studio",
-    ":material/smart_toy: VetiverChat Assistant",
+    ":material/smart_toy: Vetiver",
 ])
 
 with tab1:

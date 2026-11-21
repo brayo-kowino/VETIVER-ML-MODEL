@@ -1214,7 +1214,7 @@ hazard_display_map = {
 tab1, tab2, tab3 = st.tabs([
     ":material/analytics: Geotechnical Analytics",
     ":material/map: 3D GIS Map",
-    ":material/forum: VetiverChat Assistant",
+    ":material/forum: Vetiver",
 ])
 
 
