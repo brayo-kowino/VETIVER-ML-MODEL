@@ -13,10 +13,10 @@
     /* Global block padding optimization */
     section[data-testid="stSidebar"],
     section[data-testid="stSidebar"] > div:first-child {
-        width: 280px !important;
+        width: 292px !important;
     }
     section[data-testid="stSidebar"] > div:first-child {
-        min-width: 280px !important;
+        min-width: 292px !important;
     }
     section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
         padding-left: 12px !important;
