@@ -445,8 +445,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 }
             )
 
-            custom_key_part = f"cust_{st.session_state.custom_coord_site['latitude']}_{st.session_state.custom_coord_site['longitude']}" if st.session_state.custom_coord_site else "none"
-            deck_chart_key = f"pdk_gis_{scope_mode}_{selected_hs['id']}_{custom_key_part}_{map_style_choice}"
+            deck_chart_key = "pdk_gis_hotspot_selector"
             deck_event = st.pydeck_chart(
                 deck,
                 width="stretch",
@@ -459,24 +458,31 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             # Handle Map Pin Click Selection Event
             if deck_event and hasattr(deck_event, "selection") and deck_event.selection:
                 clicked_id = None
-                clicked_objs = deck_event.selection.get("objects", {}).get("hotspot-scatter", [])
-                if not clicked_objs:
-                    clicked_objs = deck_event.selection.get("objects", {}).get("hotspot-labels", [])
-                if clicked_objs and isinstance(clicked_objs, list) and len(clicked_objs) > 0:
-                    first_item = clicked_objs[0]
-                    if isinstance(first_item, dict):
-                        clicked_id = first_item.get("id")
+                selection = deck_event.selection
+                objects = selection.get("objects", {}) if hasattr(selection, "get") else getattr(selection, "objects", {}) or {}
+                indices = selection.get("indices", {}) if hasattr(selection, "get") else getattr(selection, "indices", {}) or {}
+
+                for layer_id in ("hotspot-scatter", "hotspot-labels"):
+                    clicked_objs = objects.get(layer_id, []) if hasattr(objects, "get") else []
+                    if clicked_objs:
+                        first_item = clicked_objs[0]
+                        if hasattr(first_item, "get"):
+                            clicked_id = first_item.get("id")
+                        elif hasattr(first_item, "id"):
+                            clicked_id = first_item.id
+                        if clicked_id:
+                            break
 
                 if not clicked_id:
-                    clicked_indices = deck_event.selection.get("indices", {}).get("hotspot-scatter", [])
-                    if not clicked_indices:
-                        clicked_indices = deck_event.selection.get("indices", {}).get("hotspot-labels", [])
-                    if clicked_indices and isinstance(clicked_indices, list) and len(clicked_indices) > 0:
-                        idx = clicked_indices[0]
-                        if 0 <= idx < len(filtered_hotspots):
-                            clicked_id = filtered_hotspots[idx]["id"]
+                    for layer_id in ("hotspot-scatter", "hotspot-labels"):
+                        clicked_indices = indices.get(layer_id, []) if hasattr(indices, "get") else []
+                        if clicked_indices:
+                            idx = clicked_indices[0]
+                            if isinstance(idx, int) and 0 <= idx < len(filtered_hotspots):
+                                clicked_id = filtered_hotspots[idx]["id"]
+                            break
 
-                selection_key = f"{deck_chart_key}:{clicked_id}" if clicked_id else None
+                selection_key = f"pin:{clicked_id}" if clicked_id else None
                 already_processed = selection_key == st.session_state.processed_map_selection
 
                 if (
