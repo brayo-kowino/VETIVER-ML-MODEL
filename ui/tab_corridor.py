@@ -493,6 +493,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.session_state.pan_to_custom = False
                     st.session_state.current_assessment = None
                     st.session_state.custom_assessment_result = None
+                    st.rerun()
 
             st.caption(":material/info: **3D GIS Guide:** Left-Click any pin to inspect. Right-Click + Drag (or Ctrl + Drag) to adjust 3D pitch/bearing. Scroll to zoom.")
 
