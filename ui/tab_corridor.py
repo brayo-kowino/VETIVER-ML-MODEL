@@ -70,13 +70,40 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
         }
         selected_style_url = style_url_map.get(map_style_choice, "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json")
 
-        # Validate that session state contains a valid hotspot id within the active filter
-        valid_ids = [h["id"] for h in filtered_hotspots]
-        if "selected_hotspot_id" not in st.session_state or st.session_state.selected_hotspot_id not in valid_ids:
-            st.session_state.selected_hotspot_id = valid_ids[0]
+        hotspots_by_id = {h["id"]: h for h in filtered_hotspots}
+        if not hotspots_by_id:
+            st.info("No hotspots are available in this geographic scope.")
+            return
 
-        cur_idx = next((i for i, h in enumerate(filtered_hotspots) if h["id"] == st.session_state.selected_hotspot_id), 0)
-        selected_hs = filtered_hotspots[cur_idx]
+        hotspot_dropdown_key = "t2_hs_dropdown"
+
+        def inspect_hotspot(hotspot_id):
+            hotspot = hotspots_by_id.get(hotspot_id)
+            if hotspot is None:
+                return
+            if hotspot_id == st.session_state.selected_hotspot_id and st.session_state.custom_coord_site is None:
+                return
+            st.session_state.selected_hotspot_id = hotspot_id
+            sync_coordinate_inputs(hotspot["latitude"], hotspot["longitude"])
+            st.session_state.custom_coord_site = None
+            st.session_state.pan_to_custom = False
+            st.session_state.current_assessment = None
+            st.session_state.custom_assessment_result = None
+
+        def select_dropdown_hotspot():
+            inspect_hotspot(st.session_state[hotspot_dropdown_key])
+            # A fresh chart selection lets the last clicked pin be picked again.
+            st.session_state.hotspot_map_revision = st.session_state.get("hotspot_map_revision", 0) + 1
+
+        if st.session_state.selected_hotspot_id not in hotspots_by_id:
+            first_hotspot_id = next(iter(hotspots_by_id))
+            if st.session_state.custom_coord_site is None:
+                inspect_hotspot(first_hotspot_id)
+            else:
+                st.session_state.selected_hotspot_id = first_hotspot_id
+        selected_hs = hotspots_by_id[st.session_state.selected_hotspot_id]
+        if st.session_state.get(hotspot_dropdown_key) != selected_hs["id"]:
+            st.session_state[hotspot_dropdown_key] = selected_hs["id"]
 
         # ── 62 / 38 SPLIT-SCREEN STUDIO LAYOUT ──
         col_map, col_inspector = st.columns([1.58, 1.0], gap="medium")
@@ -141,6 +168,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         st.rerun()
 
                 g_c1, g_c2, g_c3 = st.columns([1.2, 1.2, 1.6])
+                coordinate_key = f"{st.session_state.coord_lat}_{st.session_state.coord_lon}"
                 with g_c1:
                     in_lat = st.number_input(
                         "Latitude (°N)",
@@ -149,7 +177,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lat),
                         format="%.5f",
                         step=0.01,
-                        key="t2_in_lat",
+                        key=f"t2_in_lat_{coordinate_key}",
                     )
                 with g_c2:
                     in_lon = st.number_input(
@@ -159,7 +187,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         value=float(st.session_state.coord_lon),
                         format="%.5f",
                         step=0.01,
-                        key="t2_in_lon",
+                        key=f"t2_in_lon_{coordinate_key}",
                     )
                 with g_c3:
                     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
@@ -438,76 +466,64 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                             <div style="margin-bottom: 4px;"><b>USCS Soil Class:</b> {soil_mechanical_class}</div>
                             <div style="margin-bottom: 4px;"><b>Precipitation Zone:</b> {climate_rainfall_zone}</div>
                             <div style="margin-bottom: 4px;"><b>Key Metric:</b> {kpi1} | {kpi2}</div>
-                            <div style="font-size: 11px; color: #38BDF8; margin-top: 6px; border-top: 1px solid #334155; padding-top: 4px;"><i>Tip: Click this pin to inspect engineering parameters.</i></div>
+                            <div style="font-size: 11px; color: #38BDF8; margin-top: 6px; border-top: 1px solid #334155; padding-top: 4px;"><i>Left-click this pin to inspect engineering parameters.</i></div>
                         </div>
                     """,
                     "style": {"zIndex": "1000"}
                 }
             )
 
-            deck_chart_key = "pdk_gis_hotspot_selector"
-            deck_event = st.pydeck_chart(
-                deck,
-                width="stretch",
-                height=650,
-                on_select="rerun",
-                selection_mode="single-object",
-                key=deck_chart_key,
-            )
+            revision = st.session_state.get("hotspot_map_revision", 0)
+            deck_chart_key = f"pdk_gis_hotspot_selector_{scope_mode}_{revision}"
+            if st.session_state.custom_coord_site is not None:
+                deck_chart_key += f"_custom_{coordinate_key}"
 
-            # Handle Map Pin Click Selection Event
-            if deck_event and hasattr(deck_event, "selection") and deck_event.selection:
-                clicked_id = None
-                selection = deck_event.selection
-                objects = selection.get("objects", {}) if hasattr(selection, "get") else getattr(selection, "objects", {}) or {}
-                indices = selection.get("indices", {}) if hasattr(selection, "get") else getattr(selection, "indices", {}) or {}
-
+            def select_map_hotspot():
+                selection = st.session_state[deck_chart_key].selection
                 for layer_id in ("hotspot-scatter", "hotspot-labels"):
-                    clicked_objs = objects.get(layer_id, []) if hasattr(objects, "get") else []
-                    if clicked_objs:
-                        first_item = clicked_objs[0]
-                        if hasattr(first_item, "get"):
-                            clicked_id = first_item.get("id")
-                        elif hasattr(first_item, "id"):
-                            clicked_id = first_item.id
-                        if clicked_id:
-                            break
+                    objects = selection.get("objects", {}).get(layer_id, [])
+                    hotspot_id = objects[0].get("id") if objects and isinstance(objects[0], dict) else None
+                    if isinstance(hotspot_id, str):
+                        inspect_hotspot(hotspot_id)
+                        return
 
-                if not clicked_id:
-                    for layer_id in ("hotspot-scatter", "hotspot-labels"):
-                        clicked_indices = indices.get(layer_id, []) if hasattr(indices, "get") else []
-                        if clicked_indices:
-                            idx = clicked_indices[0]
-                            if isinstance(idx, int) and 0 <= idx < len(filtered_hotspots):
-                                clicked_id = filtered_hotspots[idx]["id"]
-                            break
+                    indices = selection.get("indices", {}).get(layer_id, [])
+                    if indices and isinstance(indices[0], int) and 0 <= indices[0] < len(filtered_hotspots):
+                        inspect_hotspot(filtered_hotspots[indices[0]]["id"])
+                        return
 
-                selection_key = f"pin:{clicked_id}" if clicked_id else None
-                already_processed = selection_key == st.session_state.processed_map_selection
+            with st.container(key="gis_hotspot_map", gap=None):
+                st.pydeck_chart(
+                    deck,
+                    width="stretch",
+                    height=650,
+                    on_select=select_map_hotspot,
+                    selection_mode="single-object",
+                    key=deck_chart_key,
+                )
+                st.html(
+                    """
+                    <script>
+                    (() => {
+                        const map = document.currentScript.closest('.st-key-gis_hotspot_map');
+                        if (!map || map.dataset.contextMenuDisabled) return;
 
-                if (
-                    clicked_id
-                    and clicked_id in valid_ids
-                    and clicked_id != st.session_state.selected_hotspot_id
-                    and not already_processed
-                ):
-                    st.session_state.processed_map_selection = selection_key
-                    st.session_state.selected_hotspot_id = clicked_id
-                    clicked_hotspot = next(h for h in filtered_hotspots if h["id"] == clicked_id)
-                    sync_coordinate_inputs(clicked_hotspot["latitude"], clicked_hotspot["longitude"])
-                    st.session_state.custom_coord_site = None
-                    st.session_state.pan_to_custom = False
-                    st.session_state.current_assessment = None
-                    st.session_state.custom_assessment_result = None
-                    st.rerun()
+                        map.addEventListener('contextmenu', (event) => event.preventDefault(), { capture: true });
+                        map.dataset.contextMenuDisabled = 'true';
+                    })();
+                    </script>
+                    """,
+                    unsafe_allow_javascript=True,
+                )
 
-            st.caption(":material/info: **3D GIS Guide:** Left-Click any pin to inspect. Right-Click + Drag (or Ctrl + Drag) to adjust 3D pitch/bearing. Scroll to zoom.")
+            st.caption(":material/info: **Left-click a pin or its label to inspect.** Ctrl + drag to tilt or rotate the map. Scroll to zoom.")
 
         # ── INSPECTOR & GEOTECHNICAL WORKBENCH (RIGHT ~38%) ──
         with col_inspector:
             with st.container(border=True):
                 if st.session_state.custom_coord_site is not None:
                     c_res = st.session_state.custom_coord_site
+                    workbench_key = f"custom_{c_res['latitude']}_{c_res['longitude']}"
                     st.markdown(f"#### :material/place: {c_res['county']}, {c_res['country']}")
                     st.markdown(f"""
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -538,22 +554,16 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     init_haz = c_res.get("default_hazard", st.session_state.preset_hazard)
 
                 else:
-                    hs_display_options = [f"{h['county_region']}: {h['name']}" for h in filtered_hotspots]
-                    sel_hs_name = st.selectbox(
+                    workbench_key = selected_hs["id"]
+                    hotspot_labels = {h["id"]: f"{h['county_region']}: {h['name']}" for h in filtered_hotspots}
+                    st.selectbox(
                         "Active Hotspot Pin",
-                        hs_display_options,
-                        index=cur_idx,
-                        key="t2_hs_dropdown",
+                        list(hotspot_labels),
+                        format_func=hotspot_labels.__getitem__,
+                        key=hotspot_dropdown_key,
+                        on_change=select_dropdown_hotspot,
                         help="Select a regional hotspot to inspect."
                     )
-                    chosen_h = next((h for h in filtered_hotspots if f"{h['county_region']}: {h['name']}" == sel_hs_name), filtered_hotspots[cur_idx])
-                    if chosen_h["id"] != st.session_state.selected_hotspot_id:
-                        st.session_state.selected_hotspot_id = chosen_h["id"]
-                        sync_coordinate_inputs(chosen_h["latitude"], chosen_h["longitude"])
-                        st.session_state.current_assessment = None
-                        st.session_state.custom_assessment_result = None
-                        selected_hs = chosen_h
-                        st.rerun()
 
                     st.markdown(f"#### :material/place: {selected_hs['name']}")
                     stat_badge = "badge-suitable" if selected_hs['status'] == "Suitable" else "badge-unsuitable"
@@ -585,7 +595,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Mine Tailings / Industrial Spoil",
                     ]
                     s_idx = soil_options.index(init_soil) if init_soil in soil_options else 0
-                    t2_soil = st.selectbox("USCS Soil Class", soil_options, index=s_idx, key="t2_w_soil")
+                    t2_soil = st.selectbox("USCS Soil Class", soil_options, index=s_idx, key=f"t2_w_soil_{workbench_key}")
 
                     climate_options = [
                         "Sub-Humid / Bimodal (700–1400 mm/yr)",
@@ -596,7 +606,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Cold Freezing / Permafrost",
                     ]
                     c_idx = climate_options.index(init_clim) if init_clim in climate_options else 0
-                    t2_climate = st.selectbox("Precipitation Envelope", climate_options, index=c_idx, key="t2_w_clim")
+                    t2_climate = st.selectbox("Precipitation Envelope", climate_options, index=c_idx, key=f"t2_w_clim_{workbench_key}")
 
                     hazard_options = [
                         "Shallow Slope / Embankment Slip (0.3–1.5 m)",
@@ -606,7 +616,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Mine Tailings & Spoil Containment",
                     ]
                     h_idx = hazard_options.index(init_haz) if init_haz in hazard_options else 0
-                    t2_hazard = st.selectbox("Civil Hazard Objective", hazard_options, index=h_idx, key="t2_w_haz")
+                    t2_hazard = st.selectbox("Civil Hazard Objective", hazard_options, index=h_idx, key=f"t2_w_haz_{workbench_key}")
 
                 with w_col2:
                     moisture_options = [
@@ -614,7 +624,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Severe Drought / Zero Watering",
                     ]
                     m_idx = moisture_options.index(init_moist) if init_moist in moisture_options else 0
-                    t2_moisture = st.selectbox("Establishment Moisture", moisture_options, index=m_idx, key="t2_w_moist")
+                    t2_moisture = st.selectbox("Establishment Moisture", moisture_options, index=m_idx, key=f"t2_w_moist_{workbench_key}")
 
                     hydro_options = [
                         "Normal Slope / Well-Drained",
@@ -622,7 +632,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Prolonged Inundation (>21 days)",
                     ]
                     hy_idx = hydro_options.index(init_hydro) if init_hydro in hydro_options else 0
-                    t2_hydro = st.selectbox("Hydrological Stress", hydro_options, index=hy_idx, key="t2_w_hydro")
+                    t2_hydro = st.selectbox("Hydrological Stress", hydro_options, index=hy_idx, key=f"t2_w_hydro_{workbench_key}")
 
                     salinity_options = [
                         "Non-Saline (< 2 dS/m)",
@@ -631,7 +641,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         "Extreme Hypersaline (> 16 dS/m)",
                     ]
                     sal_idx = salinity_options.index(init_sal) if init_sal in salinity_options else 0
-                    t2_salinity = st.selectbox("Substrate Salinity", salinity_options, index=sal_idx, key="t2_w_sal")
+                    t2_salinity = st.selectbox("Substrate Salinity", salinity_options, index=sal_idx, key=f"t2_w_sal_{workbench_key}")
 
                 if st.session_state.custom_coord_site and st.session_state.custom_coord_site.get("notes"):
                     st.caption(f":material/description: **Geotechnical Notes:** {st.session_state.custom_coord_site['notes']}")
