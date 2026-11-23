@@ -5,7 +5,7 @@ import config
 from services.report_service import export_chat_markdown
 
 
-def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
+def render_sidebar(cb_model, ollama_online: bool | None, query_engine) -> None:
     """Render friendly sidebar readiness, guide, and collapsed developer telemetry."""
     with st.sidebar:
         st.subheader(":material/eco: Vetiver AI Platform")
@@ -20,8 +20,8 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
 
         if ollama_online and query_engine:
             ai_card = ("ready", "smart_toy", "Vetiver AI", "Ready")
-        elif ollama_online:
-            ai_card = ("indexing", "sync", "Vetiver AI", "Indexing")
+        elif ollama_online is None:
+            ai_card = ("idle", "smart_toy", "Vetiver AI", "On demand")
         else:
             ai_card = ("offline", "power_off", "Vetiver AI", "Offline")
 
@@ -29,7 +29,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
             tone, icon, title, status = card
             colors = {
                 "ready": ("#DCFCE7", "#166534", "#15803D"),
-                "indexing": ("#FEF3C7", "#92400E", "#D97706"),
+                "idle": ("#F1F5F9", "#334155", "#475569"),
                 "offline": ("#FEE2E2", "#991B1B", "#DC2626"),
             }
             background, text_color, icon_color = colors[tone]
@@ -119,7 +119,7 @@ def render_sidebar(cb_model, ollama_online: bool, query_engine) -> None:
             st.caption(
                 "• **Evidence Base:** 184 Empirical Trials (124 Success + 60 Failure Cases)\n"
                 "• **Physics Boundaries:** 10 Deterministic Biomechanical Limit Rules\n"
-                "• **Classifier:** CatBoost (80.5% Acc, 97.6% Recall, 87.1% F1)\n"
+                "• **Classifier:** CatBoost with grouped validation by source reference\n"
                 "• **Explainability:** Native TreeSHAP Feature Attributions\n"
                 "• **Knowledge Engine:** LlamaIndex Vector RAG + Qwen 2.5 3B"
             )

@@ -6,7 +6,6 @@ import streamlit as st
 from catboost import CatBoostClassifier
 
 import config
-from rag_engine import build_query_engine
 
 logger = logging.getLogger("vetiver")
 
@@ -55,6 +54,8 @@ def initialize_rag(kb_mtime: float = 0.0, ollama_online: bool = True):
     if not ollama_online:
         logger.error("Ollama offline — skipping RAG init.")
         return None, None
+    from rag_engine import build_query_engine
+
     query_engine, index = build_query_engine(
         persist_dir=config.STORAGE_DIR,
         knowledge_base_dir=config.KNOWLEDGE_BASE_DIR,

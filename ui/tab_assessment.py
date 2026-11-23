@@ -7,16 +7,13 @@ import streamlit as st
 import pandas as pd
 
 import config
-from services.biomechanics import (
-    HAZARD_DISPLAY_MAP as hazard_display_map,
-    calculate_biomechanical_metrics,
-)
+from services.biomechanics import calculate_biomechanical_metrics
 from services.remediation import (
     get_two_tier_remediations,
     get_failure_banner_details,
 )
-from services.report_service import generate_suitability_report
-from services.assessment_service import run_assessment
+from ui.assessment_inputs import render_assessment_inputs
+from ui.state import activate_site, benchmark_site, coordinate_site, manual_site
 from services.model_service import load_regional_hotspots
 from geospatial_resolver import resolve_coordinate_geotechnics
 from geotechnical_engine import (
@@ -42,6 +39,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 "📍 GPS Coordinates (Auto-Detect)",
                 "Regional Benchmark Sites",
                 "Quick Corridor Shortcuts",
+                "Manual entry",
             ],
             horizontal=True,
             label_visibility="collapsed",
@@ -59,7 +57,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     value=float(st.session_state.coord_lat),
                     format="%.5f",
                     step=0.01,
-                    key="t1_input_geo_lat",
+                    key=f"t1_input_geo_lat_{st.session_state.site_revision}",
                 )
             with t1_gc2:
                 t1_in_lon = st.number_input(
@@ -69,7 +67,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     value=float(st.session_state.coord_lon),
                     format="%.5f",
                     step=0.01,
-                    key="t1_input_geo_lon",
+                    key=f"t1_input_geo_lon_{st.session_state.site_revision}",
                 )
             with t1_gc3:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
@@ -83,21 +81,12 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
 
             if t1_resolve_btn:
                 with st.spinner(f"Ingesting baseline parameters for ({t1_in_lat:.4f}°N, {t1_in_lon:.4f}°E)..."):
-                    st.session_state.coord_lat = t1_in_lat
-                    st.session_state.coord_lon = t1_in_lon
                     c_site = resolve_coordinate_geotechnics(t1_in_lat, t1_in_lon)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.pan_to_custom = True
+                    activate_site(coordinate_site(c_site), focus_map=True)
                     st.rerun()
 
-            if st.session_state.custom_coord_site is not None:
-                c_site = st.session_state.custom_coord_site
+            if st.session_state.active_site["kind"] == "coordinates":
+                c_site = st.session_state.active_site
                 st.success(
                     f"**Detected: {c_site['county']}, {c_site['country']}** (Elev: `{c_site['elevation_m']} m a.s.l.`) via **{c_site['data_sources']}**.\n\n"
                     f"Baseline parameters loaded below. You can customize moisture regime or engineering hazard before running analysis.",
@@ -123,27 +112,10 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     if st.button("Apply Location", icon=":material/download:", width="stretch", key="btn_apply_hotspot_preset"):
                         if sel_quick != hs_quick_labels[0]:
                             matched_h = next(h for h in all_hotspots if f"{h['county_region']}: {h['name']}" == sel_quick)
-                            st.session_state.preset_soil = matched_h["soil_mechanical_class"]
-                            st.session_state.preset_climate = matched_h["climate_rainfall_zone"]
-                            st.session_state.preset_moisture = matched_h["establishment_moisture"]
-                            st.session_state.preset_hydro = matched_h["hydrological_stress"]
-                            st.session_state.preset_salinity = matched_h["salinity_tier"]
-                            st.session_state.preset_hazard = matched_h["default_hazard"]
-                            st.session_state.selected_hotspot_id = matched_h["id"]
-                            auto_inputs = {
-                                "soil_mechanical_class": matched_h["soil_mechanical_class"],
-                                "climate_rainfall_zone": matched_h["climate_rainfall_zone"],
-                                "establishment_moisture": matched_h["establishment_moisture"],
-                                "hydrological_stress": matched_h["hydrological_stress"],
-                                "salinity_tier": matched_h["salinity_tier"],
-                                "est_salinity_ec_ds_m": config.SALINITY_TIER_TO_ECE.get(matched_h["salinity_tier"], 0.5),
-                                "geotechnical_hazard": matched_h["default_hazard"],
-                                "geotechnical_hazard_display": hazard_display_map.get(matched_h["default_hazard"], matched_h["default_hazard"]),
-                            }
-                            st.session_state.current_assessment = run_assessment(auto_inputs, cb_model=cb_model)
+                            activate_site(benchmark_site(matched_h), focus_map=True)
                             st.rerun()
 
-        else:  # Quick Corridor Shortcuts
+        elif ingest_mode == "Quick Corridor Shortcuts":
             st.caption("Click any major infrastructure corridor for 1-click parameter configuration:")
             t1_p1, t1_p2, t1_p3, t1_p4, t1_p5, t1_p6 = st.columns(6)
             shortcuts = [
@@ -156,138 +128,17 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             ]
             for btn_col, name, lat, lon in shortcuts:
                 if btn_col.button(name, width="stretch", key=f"t1_btn_{name.lower()}"):
-                    st.session_state.coord_lat = lat
-                    st.session_state.coord_lon = lon
                     c_site = resolve_coordinate_geotechnics(lat, lon)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.pan_to_custom = True
+                    activate_site(coordinate_site(c_site), focus_map=True)
                     st.rerun()
+        elif st.session_state.active_site["kind"] != "manual":
+            if st.button("Start a manual assessment"):
+                activate_site(manual_site())
+                st.rerun()
 
-    # ── STEP 2: REVIEW & REFINE SITE PARAMETERS ────────────────
     with st.container(border=True):
-        st.markdown("##### :material/tune: Step 2: Review & Customize Site Parameters")
-        col1, col2 = st.columns(2)
-        with col1:
-            soil_options = [
-                "Sandy Clay / Loam",
-                "Cohesive Clay / Nitisol / Laterite",
-                "Coarse Sand / Loose Pumice",
-                "Indurated Hardpan / Bedrock",
-                "Mine Tailings / Industrial Spoil",
-            ]
-            soil_idx = soil_options.index(st.session_state.preset_soil) if st.session_state.preset_soil in soil_options else 0
-            soil_type = st.selectbox(
-                "Soil Mechanical Class (USCS)",
-                soil_options,
-                index=soil_idx,
-                help="Governs soil shear strength, bulk density, and vertical root elongation rate.",
-            )
-
-            climate_options = [
-                "Sub-Humid / Bimodal (700–1400 mm/yr)",
-                "Humid / Tropical Monsoon (>1400 mm/yr)",
-                "Semi-Arid (300–700 mm/yr)",
-                "Hyper-Arid / Desert (<300 mm/yr)",
-                "Alpine High-Altitude (>2,200 m)",
-                "Cold Freezing / Permafrost",
-            ]
-            climate_idx = climate_options.index(st.session_state.preset_climate) if st.session_state.preset_climate in climate_options else 0
-            climate_zone = st.selectbox(
-                "Precipitation & Thermal Regime",
-                climate_options,
-                index=climate_idx,
-                help="Annual rainfall and temperature regime.",
-            )
-
-            hazard_options = [
-                "Shallow Slope / Embankment Slip (0.3–1.5 m)",
-                "Surficial Sheet & Rill Erosion (< 0.3 m)",
-                "Deep Rotational Slide (> 2.0 m)",
-                "Riverbank / Hydrodynamic Toe Scour",
-                "Mine Tailings & Spoil Containment",
-            ]
-            hazard_idx = hazard_options.index(st.session_state.preset_hazard) if st.session_state.preset_hazard in hazard_options else 0
-            hazard = st.selectbox(
-                "Geotechnical Engineering Objective & Slip Depth",
-                hazard_options,
-                index=hazard_idx,
-                format_func=lambda x: hazard_display_map.get(x, x),
-                help="Target bio-engineering objective and design failure depth.",
-            )
-
-        with col2:
-            moisture_options = [
-                "Adequate (Irrigated / In-Season Rain)",
-                "Severe Drought / Zero Watering",
-            ]
-            moisture_idx = moisture_options.index(st.session_state.preset_moisture) if st.session_state.preset_moisture in moisture_options else 0
-            moisture = st.selectbox(
-                "Establishment Moisture (First 30–60 Days)",
-                moisture_options,
-                index=moisture_idx,
-                help="Initial watering during transplant establishment before deep taproots mature.",
-            )
-
-            hydro_options = [
-                "Normal Slope / Well-Drained",
-                "High-Velocity Hydraulic Runoff (>2.5 m/s)",
-                "Prolonged Inundation (>21 days)",
-            ]
-            hydro_idx = hydro_options.index(st.session_state.preset_hydro) if st.session_state.preset_hydro in hydro_options else 0
-            hydro_stress = st.selectbox(
-                "Hydrological Extreme Stress",
-                hydro_options,
-                index=hydro_idx,
-                help="Fluvial tractive shear or continuous crown submergence hazards.",
-            )
-
-            salinity_options = [
-                "Non-Saline (< 2 dS/m)",
-                "Slight to Moderate (2–8 dS/m)",
-                "High Saline (8–16 dS/m)",
-                "Extreme Hypersaline (> 16 dS/m)",
-            ]
-            salinity_idx = salinity_options.index(st.session_state.preset_salinity) if st.session_state.preset_salinity in salinity_options else 0
-            salinity = st.selectbox(
-                "Substrate Salinity (ECe / Osmotic Pressure)",
-                salinity_options,
-                index=salinity_idx,
-                help="Soil electrical conductivity (ECe). Extreme salinity (>16 dS/m) induces osmotic desiccation.",
-            )
-
-        btn_c1, btn_c2 = st.columns([3, 1])
-        with btn_c1:
-            run_clicked = st.button("Run Geotechnical Analytics", icon=":material/play_arrow:", type="primary", width="stretch")
-            if run_clicked:
-                current_inputs = {
-                    "soil_mechanical_class": soil_type,
-                    "climate_rainfall_zone": climate_zone,
-                    "establishment_moisture": moisture,
-                    "hydrological_stress": hydro_stress,
-                    "salinity_tier": salinity,
-                    "est_salinity_ec_ds_m": config.SALINITY_TIER_TO_ECE.get(salinity, 0.5),
-                    "geotechnical_hazard": hazard,
-                    "geotechnical_hazard_display": hazard_display_map.get(hazard, hazard),
-                }
-                st.session_state.preset_soil = soil_type
-                st.session_state.preset_climate = climate_zone
-                st.session_state.preset_moisture = moisture
-                st.session_state.preset_hydro = hydro_stress
-                st.session_state.preset_salinity = salinity
-                st.session_state.preset_hazard = hazard
-                st.session_state.current_assessment = run_assessment(current_inputs, cb_model=cb_model)
-                st.rerun()
-
-        with btn_c2:
-            if st.button("Reset", icon=":material/refresh:", width="stretch"):
-                st.session_state.current_assessment = None
-                st.rerun()
+        st.markdown("##### :material:tune: Step 2 — Review site parameters")
+        render_assessment_inputs("t1", cb_model)
 
     # ── BIOMECHANICAL BOUNDARY PRESCREENER (EXPANDABLE) ────────
     with st.expander("🔍 Scientific Failure Boundaries & Biomechanical Limits", expanded=False):
@@ -377,7 +228,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         </div>
                         <div style="text-align: right; min-width: 140px;">
                             <div style="font-size: 2.2rem; font-weight: 900; color: #14532D; line-height: 1;">{prob:.1f}%</div>
-                            <div style="font-size: 0.76rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-top: 4px;">Model Confidence</div>
+                            <div style="font-size: 0.76rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-top: 4px;">CatBoost suitability score</div>
                         </div>
                     </div>
                     <div class="kpi-row">
@@ -407,8 +258,8 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                             <p style="color: #991B1B; font-size: 0.95rem; margin: 0; line-height: 1.45;">{diag['subtitle']}</p>
                         </div>
                         <div style="text-align: right; min-width: 140px;">
-                            <div style="font-size: 2.2rem; font-weight: 900; color: #7F1D1D; line-height: 1;">{100 - prob:.1f}%</div>
-                            <div style="font-size: 0.76rem; font-weight: 700; color: #991B1B; text-transform: uppercase; margin-top: 4px;">Failure Confidence</div>
+                            <div style="font-size: 2.2rem; font-weight: 900; color: #7F1D1D; line-height: 1;">{prob:.1f}%</div>
+                            <div style="font-size: 0.76rem; font-weight: 700; color: #991B1B; text-transform: uppercase; margin-top: 4px;">CatBoost suitability score</div>
                         </div>
                     </div>
                     <div class="kpi-row">
@@ -476,7 +327,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
 
         # 3. Decision Explainability (SHAP) - Cleanly Collapsed
         with st.expander("📊 AI Decision Attribution (Why did the model reach this verdict?)", expanded=False):
-            st.caption("Mathematical contribution (log-odds impact) of each site condition toward the verdict:")
+            st.caption("Mathematical contribution (log-odds impact) of each site condition toward the CatBoost score.")
             chart_data = exp_df.set_index("Feature")["SHAP Impact"]
             st.bar_chart(chart_data)
 

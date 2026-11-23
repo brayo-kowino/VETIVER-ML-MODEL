@@ -16,8 +16,8 @@ The VETIVER AI Platform is a dual-engine decision support tool for *Chrysopogon 
 
 | Engine | Technology | What it does |
 |:---|:---|:---|
-| **Predictive Engine** | CatBoost + TreeSHAP | Classifies geotechnical site suitability (`SUITABLE` / `UNSUITABLE`) from soil, climate, watering, salinity, and application inputs. Outputs a confidence % and an explainable SHAP attribution chart per prediction. |
-| **Literature Assistant** | Qwen 2.5 3B + LlamaIndex + Ollama | Answers research questions from a curated library of peer-reviewed Vetiver papers using a Retrieval-Augmented Generation (RAG) pipeline. No hallucinations — answers are grounded in the indexed literature. |
+| **Predictive Engine** | CatBoost + TreeSHAP | Classifies geotechnical site suitability (`SUITABLE` / `UNSUITABLE`) from soil, climate, watering, salinity, and application inputs. Shows the CatBoost suitability score, the screening rule if one fired, and TreeSHAP attributions for the model score. |
+| **Literature Assistant** | Qwen 2.5 3B + LlamaIndex + Ollama | Answers research questions from a curated library of peer-reviewed Vetiver papers using a Retrieval-Augmented Generation (RAG) pipeline. Literature answers include numbered excerpts. Weak retrieval or missing citation references produces an insufficient-evidence message. |
 
 ---
 
@@ -38,7 +38,7 @@ The VETIVER AI Platform is a dual-engine decision support tool for *Chrysopogon 
 │   │   vetiver_model.cbm     │        │  nomic-embed-text       │ │
 │   │          ↓              │        │  storage/ (vector DB)   │ │
 │   │  SUITABLE / UNSUITABLE  │        │          ↓              │ │
-│   │  Confidence %           │        │  Grounded Answer        │ │
+│   │  Suitability score      │        │  Grounded Answer        │ │
 │   │  TreeSHAP Bar Chart     │        │  (from real papers)     │ │
 │   └─────────────────────────┘        └─────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
@@ -46,16 +46,25 @@ The VETIVER AI Platform is a dual-engine decision support tool for *Chrysopogon 
 
 ---
 
-## Model Performance (Phase 1 — First Data Batch)
+## Site assessment workflow
 
-Trained on **91 field success records + 16 engineered failure boundaries** using 5-Fold Stratified Cross-Validation:
+Select a mapped benchmark, resolve GPS coordinates, or enter parameters manually. The GIS inspector and Site Assessment tab share the active site and draft inputs. Run the assessment to generate a site-specific verdict and report with input sources. Changing a site or its inputs clears the displayed verdict until reassessment. Save assessed sites to the GIS shortlist to compare two results during the session.
 
-| Metric | Score |
-|:---|:---|
-| Mean Accuracy | **89.70%** ± 4.62% |
-| Mean Precision | **92.56%** ± 2.54% |
-| Mean Recall | **95.56%** ± 4.16% |
-| Mean F1-Score | **93.99%** ± 2.76% |
+## Model validation
+
+Five-fold validation on the 184 canonical records (124 suitable and 60 unsuitable cases) withheld groups of records sharing a normalized source reference. The 146 reference groups cover both field outcomes and documented failure cases. These metrics describe out-of-fold CatBoost predictions. The deterministic screening rules are applied separately in the app.
+
+| Metric | Result |
+|---|---:|
+| Accuracy | 75.00% |
+| Balanced accuracy | 64.68% |
+| Precision for suitable cases | 75.00% |
+| Recall for suitable cases | 94.35% |
+| Recall for unsuitable cases | 35.00% |
+| F1 for suitable cases | 83.57% |
+| Brier score | 0.1801 |
+
+Run `python train_model.py --validate-only` to reproduce the validation without updating the deployed model or SHAP plot.
 
 ---
 
@@ -249,7 +258,7 @@ When the Technical Lead commits new data and you have pulled it, retrain with:
 python train_model.py
 ```
 
-This runs 5-fold cross-validation, prints accuracy/F1 metrics, saves the updated model, and regenerates the SHAP summary plot.
+This runs five-fold validation grouped by source reference, prints out-of-fold metrics, saves the updated model, and regenerates the SHAP summary plot.
 
 ---
 
@@ -328,6 +337,7 @@ All settings are in [`config.py`](config.py) and can be overridden via `.env`:
 | `OLLAMA_KEEP_ALIVE` | `24h` | How long the model stays loaded in RAM |
 | `LLM_REQUEST_TIMEOUT` | `300` | Seconds before a Literature query times out |
 | `RAG_SIMILARITY_TOP_K` | `3` | How many paper chunks are retrieved per query |
+| `RAG_MIN_SIMILARITY` | `0.45` | Minimum retrieval score for an excerpt to be eligible |
 | `RAG_CHUNK_SIZE` | `512` | Token size of each indexed document chunk |
 
 ---

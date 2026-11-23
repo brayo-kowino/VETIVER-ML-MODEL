@@ -14,22 +14,32 @@ def generate_suitability_report(
     excl_title: str = "",
     excl_details: str = "",
     biomechanics: dict = None,
+    *,
+    site: dict | None = None,
+    input_sources: dict | None = None,
 ) -> str:
     """Generate a structured Markdown engineering report."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     verdict = "SUITABLE" if prediction == 1 else "UNSUITABLE"
-    conf = f"{probability:.1f}%" if prediction == 1 else f"{100 - probability:.1f}%"
+    site = site or {}
+    input_sources = input_sources or {}
 
     lines = [
         "# VETIVER GEOTECHNICAL SITE SUITABILITY REPORT",
-        f"**Generated:** {timestamp}",
-        "**Assessment Standard:** Empirical Agronomic & Geotechnical Boundary Baselines",
+        f"**Generated** · {timestamp}",
+        f"**Site** · {site.get('name', 'Manually configured site')}",
+    ]
+    if "latitude" in site:
+        lines.append(f"**Coordinates** · {site['latitude']:.5f}, {site['longitude']:.5f}")
+    if site.get("citation"):
+        lines.append(f"**Benchmark reference** · {site['citation']}")
+    lines.extend([
         "\n---",
         "## 1. Executive Verdict",
-        f"- **System Verdict:** **{verdict}**",
-        f"- **Confidence Level:** {conf}",
-        f"- **Risk Level:** {'Low Geotechnical Risk' if prediction == 1 else 'High Failure Risk'}",
-    ]
+        f"- **System verdict** · **{verdict}**",
+        f"- **CatBoost suitability score** · {probability:.1f}%",
+        f"- **Verdict basis** · {'Screening rule override' if is_exclusion else 'CatBoost classification'}",
+    ])
     if prediction == 1:
         bio = biomechanics if biomechanics else calculate_biomechanical_metrics(inputs)
         lines.extend([
@@ -50,15 +60,27 @@ def generate_suitability_report(
 
     lines.extend([
         "\n## 2. Configured Site Parameters",
-        f"- **Soil Mechanical Class:** `{inputs.get('soil_mechanical_class', inputs.get('Soil type/structure', 'N/A'))}`",
-        f"- **Precipitation Zone:** `{inputs.get('climate_rainfall_zone', inputs.get('climate', 'N/A'))}`",
-        f"- **Establishment Moisture:** `{inputs.get('establishment_moisture', inputs.get('watering regime', 'N/A'))}`",
-        f"- **Hydrological Stress:** `{inputs.get('hydrological_stress', 'Normal')}`",
-        f"- **Salinity Tier:** `{inputs.get('salinity_tier', inputs.get('salinity', 'N/A'))}`",
-        f"- **Geotechnical Hazard Mode:** `{inputs.get('geotechnical_hazard', inputs.get('Application', 'N/A'))}`",
-        f"- **Civil Project Scope:** `{inputs.get('geotechnical_hazard_display', inputs.get('Application', inputs.get('geotechnical_hazard', 'N/A')))}`",
+        "",
+        "| Parameter | Value | Source |",
+        "| --- | --- | --- |",
+    ])
+    parameters = {
+        "soil_mechanical_class": "Soil mechanical class",
+        "climate_rainfall_zone": "Precipitation regime",
+        "establishment_moisture": "Establishment moisture",
+        "hydrological_stress": "Hydrological stress",
+        "salinity_tier": "Salinity tier",
+        "est_salinity_ec_ds_m": "Model ECe (dS/m)",
+        "geotechnical_hazard": "Geotechnical objective",
+        "elevation_m": "Elevation (m)",
+    }
+    for field, label in parameters.items():
+        value = inputs.get(field, site.get(field))
+        if value is not None:
+            lines.append(f"| {label} | {value} | {input_sources.get(field, 'Unspecified')} |")
+    lines.extend([
         "\n## 3. TreeSHAP Feature Attributions",
-        "The table below indicates the mathematical contribution of each site condition to the final verdict:\n",
+        "Each value describes the contribution of an input to the CatBoost score.\n",
         "| Site Parameter | Input Value | SHAP Impact (Log-Odds) | Directional Effect |",
         "| :--- | :--- | :--- | :--- |",
     ])
@@ -123,10 +145,12 @@ def export_chat_markdown(messages: list) -> str:
     for idx, msg in enumerate(messages, 1):
         role_label = "User" if msg["role"] == "user" else "Vetiver AI"
         lines.append(f"\n### {idx}. {role_label}")
+        if msg.get("site_name"):
+            lines.append(f"Site context · {msg['site_name']}\n")
         lines.append(msg["content"])
         if msg.get("sources"):
-            lines.append(f"\n> **Citations ({len(msg['sources'])} matched sources):**")
-            for s in msg["sources"]:
-                score_str = f" [Score: {s['score']:.3f}]" if s.get("score") is not None else ""
-                lines.append(f"> - `{s['file_name']}`{score_str}: \"{s['snippet']}...\"")
+            lines.append("\n**Source excerpts**")
+            for source in msg["sources"]:
+                lines.append(f"\n**[{source['index']}] {source['file_name']}**\n")
+                lines.extend(f"> {line}" for line in source["snippet"].splitlines())
     return "\n".join(lines)

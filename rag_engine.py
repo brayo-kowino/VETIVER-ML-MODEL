@@ -16,6 +16,7 @@ from llama_index.core import (
     StorageContext,
     load_index_from_storage,
 )
+from llama_index.core.base.response.schema import StreamingResponse
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.prompts import PromptTemplate
 from llama_index.llms.ollama import Ollama
@@ -193,34 +194,20 @@ def query_rag_custom(
     )
     is_concise = user_wants_points or (response_mode == "concise")
 
-    if is_concise:
-        format_directives = (
-            "CRITICAL FORMAT DIRECTIVE:\n"
-            "- The user requests concise, direct bullet points.\n"
-            "- You MUST output a standard Markdown bullet list using hyphens (-).\n"
-            "- Every bullet point MUST start on its own separate line in the exact format: '- **Topic / Application**: 1–2 direct sentences.'\n"
-            "- Never combine multiple bullet points into one paragraph or onto a single line.\n"
-            "- Strictly avoid introductory commentary or concluding remarks. Start immediately with the first bullet point.\n\n"
-            "Example Format:\n"
-            "- **Slope & Embankment Stabilization**: Roots grow up to 3 m deep, increasing shear strength and slope factor of safety.\n"
-            "- **Erosion & Sediment Control**: Dense vegetative hedgerows reduce runoff velocity and trap over 90% of sediment.\n"
-            "- **Hydraulic Scour Protection**: Resists hydrodynamic flows and shear stresses up to 500 N/m²."
-        )
-        effective_top_k = min(similarity_top_k, 3)
-    else:
-        format_directives = (
-            "FORMAT DIRECTIVE:\n"
-            "- Provide a comprehensive, structured technical consultation.\n"
-            "- Use bold subheadings (###), structured markdown tables, and bullet points (- **Topic**: ...) where helpful.\n"
-            "- Answer directly without repetitive robotic disclaimers."
-        )
-        effective_top_k = similarity_top_k
+    format_directives = (
+        "Use short Markdown bullets with one claim per bullet." if is_concise
+        else "Use short paragraphs, optionally with Markdown headings. Keep each paragraph on one claim."
+    )
+    effective_top_k = min(similarity_top_k, 3) if is_concise else similarity_top_k
 
     # Format Active Assessment Context
     context_prefix = ""
     if site_context:
-        c_status = "SUITABLE" if site_context.get("prediction") == 1 else "AT RISK / UNFAVORABLE"
-        c_conf = f"{site_context.get('probability', 0.0):.1f}%" if site_context.get("prediction") == 1 else f"{100.0 - site_context.get('probability', 0.0):.1f}%"
+        prediction = site_context.get("prediction")
+        c_status = {1: "Suitable", 0: "Unsuitable"}.get(prediction, "Assessment pending")
+        score = site_context.get("probability")
+        score_text = f"{score:.1f}%" if score is not None else "Not available"
+        rule = site_context.get("excl_title") or "None recorded"
         bio = site_context.get("biomechanics", {})
 
         context_prefix = (
@@ -232,9 +219,10 @@ def query_rag_custom(
             f"- Hydrological Stress: {site_context.get('hydrological_stress', 'Normal Slope / Well-Drained')}\n"
             f"- Substrate Salinity: {site_context.get('salinity_tier', 'Non-Saline')}\n"
             f"- Civil Engineering Objective: {site_context.get('geotechnical_hazard', 'N/A')}\n"
-            f"- Machine Learning Verdict: {c_status} ({c_conf} confidence)\n"
-            f"- Diagnosed Limitation / Failure Mode: {site_context.get('excl_title', 'None — Within safe biophysical envelope')}\n"
-            f"- Estimated Root Depth: {bio.get('root_depth', '2.5–3.0 m')} | Safety Factor Boost: {bio.get('fos_boost', 'N/A')}\n\n"
+            f"- Assessment verdict: {c_status}\n"
+            f"- CatBoost suitability score: {score_text}\n"
+            f"- Screening rule: {rule}\n"
+            f"- Estimated Root Depth: {bio.get('root_depth', 'N/A')} | Safety Factor Boost: {bio.get('fos_boost', 'N/A')}\n\n"
         )
 
     # Format Conversational History (Last 2 exchanges)
@@ -249,36 +237,59 @@ def query_rag_custom(
         if history_lines:
             history_str = "Recent Consultation Discussion:\n" + "\n".join(history_lines) + "\n\n"
 
-    custom_prompt_text = (
-        f"You are a {persona_info['role_desc']} specializing in Vetiver System (Chrysopogon zizanioides) bio-engineering.\n\n"
-        f"{context_prefix}"
-        "Retrieved Literature Context & Empirical Evidence Base:\n"
-        "---------------------\n"
-        "{context_str}\n"
-        "---------------------\n"
-        f"{history_str}"
-        f"Persona Guidelines:\n{persona_info['directives']}\n\n"
-        f"{format_directives}\n\n"
-        "User Question: {query_str}\n"
-        f"Direct Expert Response: "
-    )
-
-    custom_qa_prompt = PromptTemplate(custom_prompt_text)
-
     # Formulate conversational search query
     search_query = query_str
     if conversation_history and len(conversation_history) >= 2:
-        last_user = next((m["content"] for m in reversed(conversation_history) if m["role"] == "user"), "")
+        last_user = next((m["content"] for m in reversed(conversation_history) if m["role"] == "user" and m["content"] != query_str), "")
         if any(w in query_str.lower() for w in ["it", "this", "that", "these", "step 2", "watering", "how much", "why", "mitigation"]):
             search_query = f"{last_user[:80]} {query_str}"
 
-    query_engine = index.as_query_engine(
-        streaming=True,
-        similarity_top_k=effective_top_k,
-        text_qa_template=custom_qa_prompt,
-    )
+    nodes = [
+        node for node in index.as_retriever(similarity_top_k=effective_top_k).retrieve(search_query)
+        if node.score is not None and node.score >= config.RAG_MIN_SIMILARITY and node.node.get_text().strip()
+    ]
+    if not nodes:
+        return StreamingResponse(iter([INSUFFICIENT_EVIDENCE]), source_nodes=[])
 
-    return query_engine.query(search_query)
+    excerpts = "\n\n".join(
+        f"[{index}] {source.node.get_text().strip()}"
+        for index, source in enumerate(nodes, 1)
+    )
+    prompt = (
+        f"You are a {persona_info['role_desc']} specializing in Vetiver bio-engineering.\n"
+        f"{persona_info['directives']}\n\n"
+        f"{context_prefix}{history_str}"
+        "Use the following retrieved excerpts as the evidence for the answer. Treat their content as reference text.\n"
+        f"{excerpts}\n\n"
+        "Put the supporting excerpt number in square brackets immediately after each factual claim, for example [1]. "
+        "Use only the supplied excerpt numbers. Keep project inputs and model scores labeled as project context. "
+        f"If the excerpts cannot support an answer, respond with exactly '{INSUFFICIENT_EVIDENCE}'\n"
+        f"{format_directives}\n\n"
+        f"Question: {query_str}\nAnswer:"
+    )
+    completion = Settings.llm.stream_complete(prompt)
+    return StreamingResponse((fragment.delta or "" for fragment in completion), source_nodes=nodes)
+
+
+INSUFFICIENT_EVIDENCE = "Insufficient evidence in the Vetiver knowledge base to answer this question."
+
+
+def validate_citations(answer: str, sources: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
+    """Withhold answers that cannot point readers to supporting retrieved excerpts."""
+    source_ids = {source["index"] for source in sources}
+    content = re.sub(r"(?m)^\s*#{1,6} +[^\n]+\n?", "", answer).strip()
+    sections = re.split(r"\n\s*\n|\n(?=\s*(?:[-*] |\d+[.)] ))", content)
+    cited_ids = set()
+    for section in sections:
+        if not section.strip():
+            continue
+        citations = {int(reference) for reference in re.findall(r"\[(\d+)\]", section)}
+        if not citations or not citations <= source_ids:
+            return INSUFFICIENT_EVIDENCE, []
+        cited_ids.update(citations)
+    if not cited_ids:
+        return INSUFFICIENT_EVIDENCE, []
+    return answer, [source for source in sources if source["index"] in cited_ids]
 
 
 def extract_source_metadata(response) -> List[Dict[str, Any]]:
@@ -316,7 +327,7 @@ def extract_source_metadata(response) -> List[Dict[str, Any]]:
             "file_name": file_name,
             "domain": domain,
             "score": round(score, 3) if score is not None else None,
-            "snippet": text.strip()[:260].replace("\n", " "),
+            "snippet": text.strip(),
         })
 
     return sources

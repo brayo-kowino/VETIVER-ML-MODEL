@@ -83,8 +83,8 @@ def fetch_live_elevation_and_climate(lat: float, lon: float) -> Optional[Dict[st
                 c_data = resp_c.json()
                 daily_p = c_data.get("daily", {}).get("precipitation_sum", [])
                 daily_t = c_data.get("daily", {}).get("temperature_2m_mean", [])
-                if daily_p:
-                    annual_rain_mm = sum(p for p in daily_p if p is not None)
+                if len(daily_p) == 365 and all(p is not None for p in daily_p):
+                    annual_rain_mm = sum(daily_p)
                 if daily_t:
                     valid_t = [t for t in daily_t if t is not None]
                     if valid_t:
@@ -540,6 +540,7 @@ def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
     live_geo = fetch_live_reverse_geocode(lat, lon)
 
     data_sources = []
+    input_sources = {}
 
     # Integrate Reverse Geocoding
     if live_geo and live_geo.get("county") != "Unknown County":
@@ -555,13 +556,16 @@ def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
         if live_clim.get("elevation_m") is not None:
             base["elevation_m"] = int(round(live_clim["elevation_m"]))
             data_sources.append("Open-Meteo Elevation")
+            input_sources["elevation_m"] = "Provider estimate · Open-Meteo elevation"
             if base["elevation_m"] > 2200:
                 base["climate_rainfall_zone"] = "Alpine High-Altitude (>2,200 m)"
+                input_sources["climate_rainfall_zone"] = "Inferred from Open-Meteo elevation"
 
         rain_mm = live_clim.get("annual_rain_mm")
         if rain_mm is not None:
             data_sources.append("Open-Meteo Precipitation (2023 Archive)")
             if base["elevation_m"] <= 2200:
+                input_sources["climate_rainfall_zone"] = "Inferred from Open-Meteo precipitation (2023)"
                 if rain_mm > 1400:
                     base["climate_rainfall_zone"] = "Humid / Tropical Monsoon (>1400 mm/yr)"
                 elif rain_mm >= 700:
@@ -571,6 +575,7 @@ def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
                 else:
                     base["climate_rainfall_zone"] = "Hyper-Arid / Desert (<300 mm/yr)"
                     base["establishment_moisture"] = "Severe Drought / Zero Watering"
+                    input_sources["establishment_moisture"] = "Inferred from Open-Meteo precipitation (2023)"
 
     # Integrate SoilGrids
     if live_soil:
@@ -579,6 +584,7 @@ def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
         ph = live_soil.get("ph")
         if clay is not None and sand is not None:
             data_sources.append(f"ISRIC SoilGrids v2 (Clay: {clay:.1f}%, Sand: {sand:.1f}%)")
+            input_sources["soil_mechanical_class"] = "Inferred from ISRIC SoilGrids texture estimates"
             if sand >= 65.0:
                 base["soil_mechanical_class"] = "Coarse Sand / Loose Pumice"
             elif clay >= 38.0:
@@ -604,6 +610,7 @@ def resolve_coordinate_geotechnics(lat: float, lon: float) -> Dict[str, Any]:
         "default_hazard": base["default_hazard"],
         "notes": base["notes"],
         "data_sources": " · ".join(data_sources),
+        "input_sources": input_sources,
         "is_known_hotspot": is_known,
         "matched_hotspot": nearest_hotspot if is_known else None,
         "distance_to_nearest_km": round(dist_km, 1),

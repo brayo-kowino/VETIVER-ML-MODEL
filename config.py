@@ -24,6 +24,7 @@ OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "24h")  # Keep model resident
 
 # ── RAG ────────────────────────────────────────────────
 RAG_SIMILARITY_TOP_K = int(os.getenv("RAG_SIMILARITY_TOP_K", "4"))
+RAG_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.45"))
 RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "512"))
 RAG_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "64"))
 RAG_SYSTEM_PROMPT = os.getenv(

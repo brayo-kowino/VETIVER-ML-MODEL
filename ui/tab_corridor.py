@@ -1,29 +1,65 @@
-import os
-import json
 from datetime import datetime
 
 import streamlit as st
 import pandas as pd
 import pydeck as pdk
 
-import config
-from services.biomechanics import (
-    HAZARD_DISPLAY_MAP as hazard_display_map,
-    calculate_biomechanical_metrics,
-)
+from services.biomechanics import calculate_biomechanical_metrics
 from services.remediation import get_failure_banner_details, get_two_tier_remediations
-from services.assessment_service import run_assessment
 from services.model_service import load_regional_hotspots
 from geospatial_resolver import resolve_coordinate_geotechnics, search_location
-from geotechnical_engine import calculate_slope_stability, calculate_field_boq
+from ui.assessment_inputs import render_assessment_inputs
+from ui.state import PARAMETER_OPTIONS, activate_site, benchmark_site, coordinate_site, manual_site
 
 
-def sync_coordinate_inputs(latitude: float, longitude: float) -> None:
-    """Synchronize shared coordinate state without mutating existing widgets."""
-    st.session_state.coord_lat = latitude
-    st.session_state.coord_lon = longitude
+def render_shortlist() -> None:
+    state = st.session_state
+    shortlist = state.site_shortlist
+    if not shortlist:
+        return
+
+    def remove_site(site_id: str) -> None:
+        state.site_shortlist = {key: value for key, value in shortlist.items() if key != site_id}
+        state.gis_compare_sites = [key for key in state.gis_compare_sites if key != site_id]
+    with st.expander("Compare shortlisted sites", expanded=True):
+        st.caption("Assessments are saved for this session.")
+        site_ids = st.multiselect(
+            "Sites to compare",
+            list(shortlist),
+            default=list(shortlist)[:2],
+            max_selections=2,
+            format_func=lambda site_id: shortlist[site_id]["site"]["name"],
+            key="gis_compare_sites",
+        )
+        if not site_ids:
+            return
+
+        columns = st.columns(len(site_ids))
+        for column, site_id in zip(columns, site_ids):
+            result = shortlist[site_id]
+            with column:
+                st.subheader(result["site"]["name"], anchor=False)
+                verdict = "Suitable" if result["prediction"] else "Unsuitable"
+                st.write(f"**Verdict** · {verdict}")
+                st.write(f"**CatBoost suitability score** · {result['probability']:.1f}%")
+                if result["is_exclusion"]:
+                    st.write(f"**Screening rule** · {result['excl_title']}")
+                else:
+                    effects = result["exp_df"].sort_values("SHAP Impact")
+                    if not effects.empty and effects.iloc[0]["SHAP Impact"] < 0:
+                        st.write(f"**Largest negative model contribution** · {effects.iloc[0]['Feature']}")
+                st.table([
+                    {
+                        "Input": label,
+                        "Value": result["inputs"][field],
+                        "Source": result["input_sources"][field],
+                    }
+                    for field, (label, _) in PARAMETER_OPTIONS.items()
+                ])
+                st.button("Remove from shortlist", key=f"gis_remove_{site_id}", on_click=remove_site, args=(site_id,))
 
 
+@st.fragment
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
     st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
 
@@ -38,6 +74,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 "Geographic Scope Filter",
                 ["Kenya Corridors & Counties (Detailed)", "East Africa Regional Sites", "All Global Benchmark Sites"],
                 horizontal=True,
+                key="gis_scope",
                 help="Switch between Kenya national corridors, regional East Africa, or global benchmark sites."
             )
 
@@ -70,40 +107,42 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
         }
         selected_style_url = style_url_map.get(map_style_choice, "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json")
 
+        county_col, status_col = st.columns(2)
+        counties = sorted({h["county_region"] for h in filtered_hotspots})
+        statuses = sorted({h["status"] for h in filtered_hotspots})
+        counties_selected = county_col.multiselect("County or region", counties, key=f"gis_counties_{scope_mode}")
+        statuses_selected = status_col.multiselect("Benchmark status", statuses, key=f"gis_statuses_{scope_mode}")
+        filtered_hotspots = [
+            h for h in filtered_hotspots
+            if (not counties_selected or h["county_region"] in counties_selected)
+            and (not statuses_selected or h["status"] in statuses_selected)
+        ]
+        if not filtered_hotspots:
+            st.info("No benchmark pins match these filters.")
+
+        state = st.session_state
+        site = state.active_site
+        custom_site = site if site["kind"] == "coordinates" else None
+        selected_hs = site if site["kind"] == "benchmark" else None
         hotspots_by_id = {h["id"]: h for h in filtered_hotspots}
-        if not hotspots_by_id:
-            st.info("No hotspots are available in this geographic scope.")
-            return
-
         hotspot_dropdown_key = "t2_hs_dropdown"
+        selected_id = site["id"] if site["id"] in hotspots_by_id else None
+        if state.get(hotspot_dropdown_key) != selected_id:
+            state[hotspot_dropdown_key] = selected_id
 
-        def inspect_hotspot(hotspot_id):
+        def inspect_hotspot(hotspot_id, *, focus_map=False):
             hotspot = hotspots_by_id.get(hotspot_id)
-            if hotspot is None:
-                return
-            if hotspot_id == st.session_state.selected_hotspot_id and st.session_state.custom_coord_site is None:
-                return
-            st.session_state.selected_hotspot_id = hotspot_id
-            sync_coordinate_inputs(hotspot["latitude"], hotspot["longitude"])
-            st.session_state.custom_coord_site = None
-            st.session_state.pan_to_custom = False
-            st.session_state.current_assessment = None
-            st.session_state.custom_assessment_result = None
+            if hotspot is not None:
+                activate_site(benchmark_site(hotspot), focus_map=focus_map)
 
         def select_dropdown_hotspot():
-            inspect_hotspot(st.session_state[hotspot_dropdown_key])
-            # A fresh chart selection lets the last clicked pin be picked again.
-            st.session_state.hotspot_map_revision = st.session_state.get("hotspot_map_revision", 0) + 1
+            inspect_hotspot(state[hotspot_dropdown_key], focus_map=True)
+            # Reset the chart's own pick state when jumping from the dropdown.
+            state.hotspot_map_revision = state.get("hotspot_map_revision", 0) + 1
 
-        if st.session_state.selected_hotspot_id not in hotspots_by_id:
-            first_hotspot_id = next(iter(hotspots_by_id))
-            if st.session_state.custom_coord_site is None:
-                inspect_hotspot(first_hotspot_id)
-            else:
-                st.session_state.selected_hotspot_id = first_hotspot_id
-        selected_hs = hotspots_by_id[st.session_state.selected_hotspot_id]
-        if st.session_state.get(hotspot_dropdown_key) != selected_hs["id"]:
-            st.session_state[hotspot_dropdown_key] = selected_hs["id"]
+        if state.get("gis_previous_scope", scope_mode) != scope_mode:
+            state.gis_camera_focus = None
+        state.gis_previous_scope = scope_mode
 
         # ── 62 / 38 SPLIT-SCREEN STUDIO LAYOUT ──
         col_map, col_inspector = st.columns([1.58, 1.0], gap="medium")
@@ -154,17 +193,8 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     if st.button("Use selected location", type="primary", width="stretch", icon=":material/my_location:", key="btn_t2_use_search_result"):
                         search_lat = selected_result["latitude"]
                         search_lon = selected_result["longitude"]
-                        sync_coordinate_inputs(search_lat, search_lon)
                         c_site = resolve_coordinate_geotechnics(search_lat, search_lon)
-                        st.session_state.custom_coord_site = c_site
-                        st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                        st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                        st.session_state.preset_moisture = c_site["establishment_moisture"]
-                        st.session_state.preset_hydro = c_site["hydrological_stress"]
-                        st.session_state.preset_salinity = c_site["salinity_tier"]
-                        st.session_state.preset_hazard = c_site["default_hazard"]
-                        st.session_state.custom_assessment_result = None
-                        st.session_state.pan_to_custom = True
+                        activate_site(coordinate_site(c_site), focus_map=True)
                         st.rerun()
 
                 g_c1, g_c2, g_c3 = st.columns([1.2, 1.2, 1.6])
@@ -200,112 +230,31 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     )
 
                 # Corridor shortcuts row
-                cp1, cp2, cp3, cp4, cp5, cp6 = st.columns(6)
-                if cp1.button("Nairobi", width="stretch", key="t2_pill_nrb"):
-                    sync_coordinate_inputs(-1.2921, 36.8219)
-                    c_site = resolve_coordinate_geotechnics(-1.2921, 36.8219)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
-                if cp2.button("Samburu", width="stretch", key="t2_pill_smb"):
-                    sync_coordinate_inputs(1.0000, 36.8219)
-                    c_site = resolve_coordinate_geotechnics(1.0000, 36.8219)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
-                if cp3.button("Eldoret", width="stretch", key="t2_pill_eld"):
-                    sync_coordinate_inputs(0.5143, 35.2698)
-                    c_site = resolve_coordinate_geotechnics(0.5143, 35.2698)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
-                if cp4.button("Naivasha", width="stretch", key="t2_pill_nvs"):
-                    sync_coordinate_inputs(-0.7172, 36.4312)
-                    c_site = resolve_coordinate_geotechnics(-0.7172, 36.4312)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
-                if cp5.button("Embu", width="stretch", key="t2_pill_emb"):
-                    sync_coordinate_inputs(-0.5342, 37.4544)
-                    c_site = resolve_coordinate_geotechnics(-0.5342, 37.4544)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
-                if cp6.button("Garissa", width="stretch", key="t2_pill_grs"):
-                    sync_coordinate_inputs(-0.4532, 39.6461)
-                    c_site = resolve_coordinate_geotechnics(-0.4532, 39.6461)
-                    st.session_state.custom_coord_site = c_site
-                    st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                    st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                    st.session_state.preset_moisture = c_site["establishment_moisture"]
-                    st.session_state.preset_hydro = c_site["hydrological_stress"]
-                    st.session_state.preset_salinity = c_site["salinity_tier"]
-                    st.session_state.preset_hazard = c_site["default_hazard"]
-                    st.session_state.custom_assessment_result = None
-                    st.session_state.pan_to_custom = True
-                    st.rerun()
+                shortcuts = [
+                    ("Nairobi", -1.2921, 36.8219), ("Samburu", 1.0000, 36.8219),
+                    ("Eldoret", 0.5143, 35.2698), ("Naivasha", -0.7172, 36.4312),
+                    ("Embu", -0.5342, 37.4544), ("Garissa", -0.4532, 39.6461),
+                ]
+                for column, (name, latitude, longitude) in zip(st.columns(6), shortcuts):
+                    if column.button(name, width="stretch", key=f"t2_pill_{name.lower()}"):
+                        resolved = resolve_coordinate_geotechnics(latitude, longitude)
+                        activate_site(coordinate_site(resolved), focus_map=True)
+                        st.rerun()
 
                 if resolve_btn:
                     with st.spinner(f"Querying environmental providers for ({in_lat:.4f}°N, {in_lon:.4f}°E)..."):
-                        sync_coordinate_inputs(in_lat, in_lon)
                         c_site = resolve_coordinate_geotechnics(in_lat, in_lon)
-                        st.session_state.custom_coord_site = c_site
-                        st.session_state.preset_soil = c_site["soil_mechanical_class"]
-                        st.session_state.preset_climate = c_site["climate_rainfall_zone"]
-                        st.session_state.preset_moisture = c_site["establishment_moisture"]
-                        st.session_state.preset_hydro = c_site["hydrological_stress"]
-                        st.session_state.preset_salinity = c_site["salinity_tier"]
-                        st.session_state.preset_hazard = c_site["default_hazard"]
-                        st.session_state.custom_assessment_result = None
-                        st.session_state.pan_to_custom = True
+                        activate_site(coordinate_site(c_site), focus_map=True)
                         st.rerun()
 
-            # Camera parameters
-            if st.session_state.get("pan_to_custom") and st.session_state.custom_coord_site:
-                map_lat = st.session_state.custom_coord_site["latitude"]
-                map_lon = st.session_state.custom_coord_site["longitude"]
-                map_zoom = 9.8
-                map_pitch = 40
+            # Pin inspection leaves the initial view unchanged so deck.gl keeps the current camera.
+            focus = state.get("gis_camera_focus")
+            if focus:
+                map_lat, map_lon = focus
+                map_zoom, map_pitch = 9.8, 40
             else:
-                map_lat = selected_hs["latitude"]
-                map_lon = selected_hs["longitude"]
-                map_zoom = 8.2 if "Kenya" in scope_mode else 6.8
-                map_pitch = 38
+                map_lat, map_lon = default_lat, default_lon
+                map_zoom, map_pitch = default_zoom, default_pitch
 
             view_state = pdk.ViewState(
                 latitude=map_lat,
@@ -316,7 +265,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             )
 
             df_map = pd.DataFrame(filtered_hotspots)
-            df_active = pd.DataFrame([selected_hs])
+            df_active = pd.DataFrame([selected_hs] if selected_id else [])
 
             # Layer 1: Base Hotspot Pins (Interactive Scatterplot)
             scatter_layer = pdk.Layer(
@@ -373,8 +322,8 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             map_layers = [scatter_layer, halo_layer, text_layer]
 
             # Optional Layer 4: Custom Queried GPS Target Beacon Layer
-            if st.session_state.custom_coord_site is not None:
-                c_site = st.session_state.custom_coord_site
+            if custom_site is not None:
+                c_site = custom_site
                 df_custom = pd.DataFrame([{
                     "latitude": c_site["latitude"],
                     "longitude": c_site["longitude"],
@@ -462,7 +411,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #F8FAFC; background: #0F172A; padding: 12px; border-radius: 8px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 320px;">
                             <div style="font-weight: 800; font-size: 14px; color: #38BDF8; margin-bottom: 4px;">{name}</div>
                             <div style="color: #94A3B8; margin-bottom: 6px; font-size: 12px;">{county_region}, {country} &bull; Elev: {elevation_m} m a.s.l.</div>
-                            <div style="margin-bottom: 4px;"><b>Geotechnical Status:</b> <span style="font-weight: 700; color: #4ADE80;">{status}</span></div>
+                            <div style="margin-bottom: 4px;"><b>Site status:</b> <span style="font-weight: 700;">{status}</span></div>
                             <div style="margin-bottom: 4px;"><b>USCS Soil Class:</b> {soil_mechanical_class}</div>
                             <div style="margin-bottom: 4px;"><b>Precipitation Zone:</b> {climate_rainfall_zone}</div>
                             <div style="margin-bottom: 4px;"><b>Key Metric:</b> {kpi1} | {kpi2}</div>
@@ -474,9 +423,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             )
 
             revision = st.session_state.get("hotspot_map_revision", 0)
-            deck_chart_key = f"pdk_gis_hotspot_selector_{scope_mode}_{revision}"
-            if st.session_state.custom_coord_site is not None:
-                deck_chart_key += f"_custom_{coordinate_key}"
+            deck_chart_key = f"pdk_gis_hotspot_selector_{scope_mode}_{revision}_{tuple(hotspots_by_id)}"
 
             def select_map_hotspot():
                 selection = st.session_state[deck_chart_key].selection
@@ -516,14 +463,29 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     unsafe_allow_javascript=True,
                 )
 
-            st.caption(":material/info: **Left-click a pin or its label to inspect.** Ctrl + drag to tilt or rotate the map. Scroll to zoom.")
+            st.caption("Click a pin or label to inspect. Ctrl + drag to tilt or rotate. Scroll to zoom.")
+            legend = {h["status"]: h["color"] for h in hotspots}
+            markers = [
+                f'<span style="color:rgb({",".join(map(str, color[:3]))})">●</span> {status}'
+                for status, color in legend.items()
+            ]
+            st.markdown(" · ".join([*markers, "Cyan ring · active benchmark", "Amber · GPS site"]), unsafe_allow_html=True)
 
         # ── INSPECTOR & GEOTECHNICAL WORKBENCH (RIGHT ~38%) ──
         with col_inspector:
             with st.container(border=True):
-                if st.session_state.custom_coord_site is not None:
-                    c_res = st.session_state.custom_coord_site
-                    workbench_key = f"custom_{c_res['latitude']}_{c_res['longitude']}"
+                hotspot_labels = {h["id"]: f"{h['county_region']} · {h['name']}" for h in filtered_hotspots}
+                st.selectbox(
+                    "Jump to benchmark",
+                    list(hotspot_labels),
+                    index=None,
+                    format_func=hotspot_labels.__getitem__,
+                    key=hotspot_dropdown_key,
+                    on_change=select_dropdown_hotspot,
+                    disabled=not hotspot_labels,
+                )
+                if custom_site is not None:
+                    c_res = custom_site
                     st.markdown(f"#### :material/place: {c_res['county']}, {c_res['country']}")
                     st.markdown(f"""
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -546,30 +508,12 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                             icon=":material/public:"
                         )
 
-                    init_soil = c_res.get("soil_mechanical_class", st.session_state.preset_soil)
-                    init_clim = c_res.get("climate_rainfall_zone", st.session_state.preset_climate)
-                    init_moist = c_res.get("establishment_moisture", st.session_state.preset_moisture)
-                    init_hydro = c_res.get("hydrological_stress", st.session_state.preset_hydro)
-                    init_sal = c_res.get("salinity_tier", st.session_state.preset_salinity)
-                    init_haz = c_res.get("default_hazard", st.session_state.preset_hazard)
-
-                else:
-                    workbench_key = selected_hs["id"]
-                    hotspot_labels = {h["id"]: f"{h['county_region']}: {h['name']}" for h in filtered_hotspots}
-                    st.selectbox(
-                        "Active Hotspot Pin",
-                        list(hotspot_labels),
-                        format_func=hotspot_labels.__getitem__,
-                        key=hotspot_dropdown_key,
-                        on_change=select_dropdown_hotspot,
-                        help="Select a regional hotspot to inspect."
-                    )
-
+                elif selected_hs is not None:
                     st.markdown(f"#### :material/place: {selected_hs['name']}")
                     stat_badge = "badge-suitable" if selected_hs['status'] == "Suitable" else "badge-unsuitable"
                     st.markdown(f"""
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
-                        <span class="studio-badge {stat_badge}">Status: {selected_hs['status']}</span>
+                        <span class="studio-badge {stat_badge}">Benchmark status · {selected_hs['status']}</span>
                         <span class="studio-badge badge-blue">Elevation: {selected_hs['elevation_m']} m</span>
                         <span class="studio-badge badge-amber">GPS: {selected_hs['latitude']:.4f}°N, {selected_hs['longitude']:.4f}°E</span>
                     </div>
@@ -577,116 +521,25 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                     st.caption(f"**Empirical Summary:** {selected_hs['summary_desc']}")
                     st.caption(f"**Citation:** *{selected_hs['citation']}*")
 
-                    init_soil = selected_hs.get("soil_mechanical_class", st.session_state.preset_soil)
-                    init_clim = selected_hs.get("climate_rainfall_zone", st.session_state.preset_climate)
-                    init_moist = selected_hs.get("establishment_moisture", st.session_state.preset_moisture)
-                    init_hydro = selected_hs.get("hydrological_stress", st.session_state.preset_hydro)
-                    init_sal = selected_hs.get("salinity_tier", st.session_state.preset_salinity)
-                    init_haz = selected_hs.get("default_hazard", st.session_state.preset_hazard)
+                else:
+                    st.info("Select a benchmark pin or locate a GPS site to assess it.")
 
-                st.markdown("##### :material/tune: Geotechnical Parameters")
-                w_col1, w_col2 = st.columns(2)
-                with w_col1:
-                    soil_options = [
-                        "Sandy Clay / Loam",
-                        "Cohesive Clay / Nitisol / Laterite",
-                        "Coarse Sand / Loose Pumice",
-                        "Indurated Hardpan / Bedrock",
-                        "Mine Tailings / Industrial Spoil",
-                    ]
-                    s_idx = soil_options.index(init_soil) if init_soil in soil_options else 0
-                    t2_soil = st.selectbox("USCS Soil Class", soil_options, index=s_idx, key=f"t2_w_soil_{workbench_key}")
-
-                    climate_options = [
-                        "Sub-Humid / Bimodal (700–1400 mm/yr)",
-                        "Humid / Tropical Monsoon (>1400 mm/yr)",
-                        "Semi-Arid (300–700 mm/yr)",
-                        "Hyper-Arid / Desert (<300 mm/yr)",
-                        "Alpine High-Altitude (>2,200 m)",
-                        "Cold Freezing / Permafrost",
-                    ]
-                    c_idx = climate_options.index(init_clim) if init_clim in climate_options else 0
-                    t2_climate = st.selectbox("Precipitation Envelope", climate_options, index=c_idx, key=f"t2_w_clim_{workbench_key}")
-
-                    hazard_options = [
-                        "Shallow Slope / Embankment Slip (0.3–1.5 m)",
-                        "Surficial Sheet & Rill Erosion (< 0.3 m)",
-                        "Deep Rotational Slide (> 2.0 m)",
-                        "Riverbank / Hydrodynamic Toe Scour",
-                        "Mine Tailings & Spoil Containment",
-                    ]
-                    h_idx = hazard_options.index(init_haz) if init_haz in hazard_options else 0
-                    t2_hazard = st.selectbox("Civil Hazard Objective", hazard_options, index=h_idx, key=f"t2_w_haz_{workbench_key}")
-
-                with w_col2:
-                    moisture_options = [
-                        "Adequate (Irrigated / In-Season Rain)",
-                        "Severe Drought / Zero Watering",
-                    ]
-                    m_idx = moisture_options.index(init_moist) if init_moist in moisture_options else 0
-                    t2_moisture = st.selectbox("Establishment Moisture", moisture_options, index=m_idx, key=f"t2_w_moist_{workbench_key}")
-
-                    hydro_options = [
-                        "Normal Slope / Well-Drained",
-                        "High-Velocity Hydraulic Runoff (>2.5 m/s)",
-                        "Prolonged Inundation (>21 days)",
-                    ]
-                    hy_idx = hydro_options.index(init_hydro) if init_hydro in hydro_options else 0
-                    t2_hydro = st.selectbox("Hydrological Stress", hydro_options, index=hy_idx, key=f"t2_w_hydro_{workbench_key}")
-
-                    salinity_options = [
-                        "Non-Saline (< 2 dS/m)",
-                        "Slight to Moderate (2–8 dS/m)",
-                        "High Saline (8–16 dS/m)",
-                        "Extreme Hypersaline (> 16 dS/m)",
-                    ]
-                    sal_idx = salinity_options.index(init_sal) if init_sal in salinity_options else 0
-                    t2_salinity = st.selectbox("Substrate Salinity", salinity_options, index=sal_idx, key=f"t2_w_sal_{workbench_key}")
-
-                if st.session_state.custom_coord_site and st.session_state.custom_coord_site.get("notes"):
-                    st.caption(f":material/description: **Geotechnical Notes:** {st.session_state.custom_coord_site['notes']}")
-
-                # Action buttons
-                ab_c1, ab_c2 = st.columns([2, 1])
-                with ab_c1:
-                    run_t2_eval = st.button("Re-evaluate Parameters", type="primary", width="stretch", icon=":material/refresh:", key="btn_t2_run_eval")
-                with ab_c2:
-                    clear_clicked = False
-                    if st.session_state.custom_coord_site is not None:
-                        clear_clicked = st.button("Clear", width="stretch", icon=":material/close:", key="btn_t2_clear")
-                        if clear_clicked:
-                            st.session_state.custom_coord_site = None
-                            st.session_state.custom_assessment_result = None
-                            st.session_state.pan_to_custom = False
-                            st.rerun()
-
-                if run_t2_eval or st.session_state.current_assessment is None:
-                    eval_inputs = {
-                        "soil_mechanical_class": t2_soil,
-                        "climate_rainfall_zone": t2_climate,
-                        "establishment_moisture": t2_moisture,
-                        "hydrological_stress": t2_hydro,
-                        "salinity_tier": t2_salinity,
-                        "est_salinity_ec_ds_m": config.SALINITY_TIER_TO_ECE.get(t2_salinity, 0.5),
-                        "geotechnical_hazard": t2_hazard,
-                        "geotechnical_hazard_display": hazard_display_map.get(t2_hazard, t2_hazard),
-                    }
-                    st.session_state.preset_soil = t2_soil
-                    st.session_state.preset_climate = t2_climate
-                    st.session_state.preset_moisture = t2_moisture
-                    st.session_state.preset_hydro = t2_hydro
-                    st.session_state.preset_salinity = t2_salinity
-                    st.session_state.preset_hazard = t2_hazard
-                    st.session_state.current_assessment = run_assessment(eval_inputs, cb_model=cb_model)
-                    st.session_state.custom_assessment_result = st.session_state.current_assessment
-                    if run_t2_eval:
+            if site["kind"] != "manual":
+                with st.container(border=True):
+                    st.markdown("##### :material/tune: Geotechnical parameters")
+                    if custom_site and custom_site.get("notes"):
+                        st.caption(custom_site["notes"])
+                    if custom_site and st.button("Clear GPS site", key="btn_t2_clear"):
+                        activate_site(manual_site())
                         st.rerun()
+                    render_assessment_inputs("t2", cb_model)
 
-                # Assessment Display Dock
-                active_res = st.session_state.custom_assessment_result or (st.session_state.current_assessment if st.session_state.current_assessment else None)
+                active_res = state.current_assessment
                 if active_res:
                     res_pred = active_res["prediction"]
                     res_prob = active_res["probability"]
+                    if active_res["is_exclusion"]:
+                        st.warning(f"Screening rule override · {active_res['excl_title']}")
                     bio = active_res.get("biomechanics") or calculate_biomechanical_metrics(active_res.get("inputs", {}))
 
                     if res_pred == 1:
@@ -694,7 +547,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         <div class="verdict-banner-suitable" style="padding: 14px 16px; margin-top: 12px; margin-bottom: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span class="studio-badge badge-suitable">SUITABLE</span>
-                                <span style="font-size: 1.35rem; font-weight: 800; color: #14532D;">{res_prob:.1f}% Confidence</span>
+                                <span style="font-size: 1.35rem; font-weight: 800; color: #14532D;">{res_prob:.1f}% CatBoost suitability score</span>
                             </div>
                             <div style="font-weight: 700; color: #14532D; font-size: 0.95rem; margin-top: 6px;">Positive Geotechnical Alignment</div>
                             <p style="font-size: 0.82rem; color: #166534; margin: 4px 0 0 0; line-height: 1.35;">{bio.get('summary_desc', '')}</p>
@@ -720,7 +573,7 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                         <div class="verdict-banner-unsuitable" style="padding: 14px 16px; margin-top: 12px; margin-bottom: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span class="studio-badge badge-unsuitable">{diag['badge']}</span>
-                                <span style="font-size: 1.35rem; font-weight: 800; color: #7F1D1D;">{100 - res_prob:.1f}% Failure Conf.</span>
+                                <span style="font-size: 1.35rem; font-weight: 800; color: #7F1D1D;">{res_prob:.1f}% CatBoost suitability score</span>
                             </div>
                             <div style="font-weight: 700; color: #7F1D1D; font-size: 0.92rem; margin-top: 6px;">{diag['title']}</div>
                             <p style="font-size: 0.82rem; color: #991B1B; margin: 4px 0 0 0; line-height: 1.35;">{diag['subtitle']}</p>
@@ -779,6 +632,10 @@ def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                             for proto_text, _ in remed['protocols']:
                                 st.markdown(f"- {proto_text}")
 
-                    st.caption("✅ Analysis complete. Parameters & verdict are automatically synchronized across the platform.")
+                    if st.button("Save assessment to shortlist", key="gis_save_site", icon=":material/bookmark:"):
+                        state.site_shortlist = {**state.site_shortlist, site["id"]: active_res}
+                        st.success("Assessment saved to the shortlist.")
+
+        render_shortlist()
 
 

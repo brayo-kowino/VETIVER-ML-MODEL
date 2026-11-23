@@ -3,8 +3,9 @@ Vetiver CatBoost Classifier Training Script.
 Trained on 100% empirical scientific peer-reviewed evidence:
   - 124 empirical success/growth cases (global + regional trials)
   - 60 empirical failure/exclusion boundary cases (global + East Africa cohort)
-Features 5-fold stratified cross-validation, SHAP explainability, and model serialization.
+Features 5-fold cross-validation grouped by source reference, SHAP explainability, and model serialization.
 """
+import argparse
 import os
 import sys
 
@@ -14,17 +15,16 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from catboost import CatBoostClassifier, Pool
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
-    classification_report,
+    balanced_accuracy_score,
+    brier_score_loss,
 )
-import shap
 
 import config
 
@@ -51,7 +51,51 @@ def load_datasets() -> pd.DataFrame:
     return df
 
 
-def run_training():
+def validate_by_reference(df: pd.DataFrame) -> None:
+    """Hold out whole references to evaluate transfer to unseen studies."""
+    if "raw_reference" not in df:
+        raise ValueError("Grouped validation requires the canonical dataset with raw_reference.")
+
+    groups = (
+        df["raw_reference"].fillna("").str.casefold().str.replace(r"\s+", " ", regex=True).str.strip()
+        .replace("", "unknown reference")
+    )
+    X = df[config.MODEL_FEATURES]
+    y = df["Suitability"]
+    splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    predictions = np.empty(len(df), dtype=int)
+    scores = np.empty(len(df))
+    print(f"Five-fold validation on {len(df)} cases grouped by {groups.nunique()} source references.")
+    for fold, (train_idx, val_idx) in enumerate(splitter.split(X, y, groups), 1):
+        if y.iloc[train_idx].nunique() < 2:
+            raise ValueError(f"Training fold {fold} needs both suitability classes.")
+        model = CatBoostClassifier(
+            iterations=160,
+            learning_rate=0.07,
+            depth=5,
+            cat_features=config.CAT_FEATURES,
+            monotone_constraints=config.MONOTONE_CONSTRAINTS,
+            verbose=0,
+            random_seed=42,
+            thread_count=4,
+            allow_writing_files=False,
+        )
+        model.fit(X.iloc[train_idx], y.iloc[train_idx])
+        predictions[val_idx] = model.predict(X.iloc[val_idx]).astype(int)
+        scores[val_idx] = model.predict_proba(X.iloc[val_idx])[:, 1]
+        accuracy = accuracy_score(y.iloc[val_idx], predictions[val_idx])
+        print(f"Fold {fold} · {len(val_idx)} cases, {groups.iloc[val_idx].nunique()} held-out references · {accuracy:.1%} accuracy")
+
+    print(f"Held-out accuracy          {accuracy_score(y, predictions):.2%}")
+    print(f"Held-out balanced accuracy {balanced_accuracy_score(y, predictions):.2%}")
+    print(f"Held-out precision         {precision_score(y, predictions, zero_division=0):.2%}")
+    print(f"Held-out recall (suitable)   {recall_score(y, predictions, zero_division=0):.2%}")
+    print(f"Held-out recall (unsuitable) {recall_score(y, predictions, pos_label=0, zero_division=0):.2%}")
+    print(f"Held-out F1                {f1_score(y, predictions, zero_division=0):.2%}")
+    print(f"Held-out Brier score       {brier_score_loss(y, scores):.4f}")
+
+
+def run_training(*, validate_only: bool = False):
     print("=" * 70)
     print("VETIVER CATBOOST CLASSIFIER - EMPIRICAL TRAINING & VALIDATION")
     print("=" * 70)
@@ -77,47 +121,12 @@ def run_training():
     X = df_all[features]
     y = df_all["Suitability"]
 
-    # 3. Stratified 5-Fold Cross-Validation
-    print("\n[2/5] Running Stratified 5-Fold Cross-Validation on Empirical Data (with Monotonic Physics)...")
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    fold_accuracies = []
-    fold_f1s = []
-    fold_recalls = []
-    fold_precisions = []
+    validate_by_reference(df_all)
+    if validate_only:
+        return
 
-    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
-        X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-        X_val, y_val = X.iloc[val_idx], y.iloc[val_idx]
-
-        fold_model = CatBoostClassifier(
-            iterations=150,
-            learning_rate=0.07,
-            depth=5,
-            cat_features=cat_features,
-            monotone_constraints=config.MONOTONE_CONSTRAINTS,
-            verbose=0,
-            random_seed=42 + fold,
-        )
-        fold_model.fit(X_train, y_train)
-        y_pred = fold_model.predict(X_val)
-
-        acc = accuracy_score(y_val, y_pred)
-        prec = precision_score(y_val, y_pred, zero_division=0)
-        rec = recall_score(y_val, y_pred, zero_division=0)
-        f1 = f1_score(y_val, y_pred, zero_division=0)
-
-        fold_accuracies.append(acc)
-        fold_f1s.append(f1)
-        fold_recalls.append(rec)
-        fold_precisions.append(prec)
-
-        print(f"      Fold {fold} -> Accuracy: {acc*100:.1f}% | Precision: {prec*100:.1f}% | Recall: {rec*100:.1f}% | F1: {f1*100:.1f}%")
-
-    print("\n[3/5] Cross-Validation Summary (5 Folds):")
-    print(f"      * Mean Accuracy  : {np.mean(fold_accuracies)*100:.2f}% (+/- {np.std(fold_accuracies)*100:.2f}%)")
-    print(f"      * Mean Precision : {np.mean(fold_precisions)*100:.2f}% (+/- {np.std(fold_precisions)*100:.2f}%)")
-    print(f"      * Mean Recall    : {np.mean(fold_recalls)*100:.2f}% (+/- {np.std(fold_recalls)*100:.2f}%)")
-    print(f"      * Mean F1-Score  : {np.mean(fold_f1s)*100:.2f}% (+/- {np.std(fold_f1s)*100:.2f}%)")
+    import matplotlib.pyplot as plt
+    import shap
 
     # 4. Train Final Model on All Data
     print("\n[4/5] Training final production model on all 184 empirical cases (Physics-Monotonic)...")
@@ -157,4 +166,6 @@ def run_training():
 
 
 if __name__ == "__main__":
-    run_training()
+    parser = argparse.ArgumentParser(description="Validate and train the Vetiver CatBoost model.")
+    parser.add_argument("--validate-only", action="store_true", help="Run grouped validation without writing model files.")
+    run_training(validate_only=parser.parse_args().validate_only)
