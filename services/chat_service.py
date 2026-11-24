@@ -5,6 +5,13 @@ import config
 from services.model_service import ChatUnavailable, check_ollama_models, initialize_rag
 
 
+RESEARCH_FALLBACK = (
+    "I couldn't find a reliable answer to that. I can help with Vetiver, slope stabilization, "
+    "erosion control, and site assessments. If you're working on a project, tell me a little "
+    "about your site or what you're trying to solve."
+)
+
+
 def conversational_reply(question: str) -> str | None:
     """Recognize complete social messages so a greeting cannot swallow a question."""
     text = " ".join(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", question.casefold())).replace("’", "'")
@@ -37,6 +44,7 @@ def answer_research_question(
     from ollama import ResponseError
 
     from rag_engine import (
+        INSUFFICIENT_EVIDENCE,
         clean_markdown_formatting,
         extract_source_metadata,
         query_rag_custom,
@@ -65,4 +73,5 @@ def answer_research_question(
         raise ChatUnavailable(
             "Ollama couldn't find the requested model. Check the configured chat and embedding models."
         ) from exc
-    return validate_citations(answer, extract_source_metadata(response))
+    answer, sources = validate_citations(answer, extract_source_metadata(response))
+    return (RESEARCH_FALLBACK if answer == INSUFFICIENT_EVIDENCE else answer), sources

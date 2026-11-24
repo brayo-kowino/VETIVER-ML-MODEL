@@ -45,10 +45,13 @@ def render_welcome(site_context: dict | None) -> None:
             "What slope risks should I check at my site?" if site_context else "How does Vetiver stabilize slopes?",
             "When does Vetiver need structural support?",
         ]
-        with st.container(horizontal=True, horizontal_alignment="center", gap="xsmall"):
+        with st.container(
+            key="vetiver_chat_starters", horizontal=True, horizontal_alignment="center", gap="small"
+        ):
             for prompt in prompts:
                 st.button(
                     prompt,
+                    icon=":material/arrow_outward:",
                     on_click=select_prompt,
                     args=(prompt,),
                 )
@@ -81,7 +84,7 @@ def render_tab_chat(tab) -> None:
             vertical_alignment="center",
             gap="small",
         ):
-            st.markdown("### Vetiver AI", width="content")
+            title = st.container(key="vetiver_chat_title", gap="xsmall", width="content")
             with st.container(horizontal=True, vertical_alignment="center", gap="xsmall", width="content"):
                 with st.popover("Settings", icon=":material/tune:", type="tertiary"):
                     response_format = st.selectbox(
@@ -98,11 +101,16 @@ def render_tab_chat(tab) -> None:
                     st.button("New chat", icon=":material/add:", on_click=clear_conversation)
 
         site_context = active_site if include_site else None
-        if site_context:
-            st.caption(f"Active site · {site_context['location_name']}")
+        with title:
+            st.subheader(":material/eco: Vetiver AI", anchor=False)
+            if site_context:
+                st.caption(f"Active site · {site_context['location_name']}")
 
+        # Keep an empty slot in the same position to clear the welcome before a slow reply.
+        welcome = st.empty()
         if not state.messages and not question:
-            render_welcome(site_context)
+            with welcome.container():
+                render_welcome(site_context)
             return
 
         with st.container(key="vetiver_chat_history", height=480, border=False, gap="small"):
@@ -131,7 +139,7 @@ def render_tab_chat(tab) -> None:
                 sources = []
                 with st.chat_message("assistant", avatar=":material/eco:"):
                     if reply is None:
-                        with st.spinner("Searching Vetiver research…"):
+                        with st.spinner("Thinking…"):
                             try:
                                 reply, sources = answer_research_question(
                                     question,

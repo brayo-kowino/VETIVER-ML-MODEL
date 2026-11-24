@@ -1,6 +1,5 @@
 import os
-import json
-import html
+from html import escape
 from datetime import datetime
 
 import streamlit as st
@@ -17,131 +16,189 @@ from ui.state import activate_site, benchmark_site, coordinate_site, manual_site
 from services.model_service import load_regional_hotspots
 from geospatial_resolver import resolve_coordinate_geotechnics
 from geotechnical_engine import (
-    calculate_slope_stability,
     generate_slope_cross_section_fig,
     generate_fos_sensitivity_fig,
     calculate_field_boq,
     generate_temporal_maturation_fig,
 )
-from corridor_engine import export_corridor_geojson
 
 
-def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
-    st.subheader("Site Suitability Assessment", anchor=False)
-   
-    # ── STEP 1: SELECT OR INGEST LOCATION ──────────────────────
-    with st.container(border=True):
-        st.markdown("##### :material/place: Step 1: Select or Ingest Project Site")
-        
-        ingest_mode = st.radio(
-            "Location Ingestion Mode",
-            [
-                "📍 GPS Coordinates (Auto-Detect)",
-                "Regional Benchmark Sites",
-                "Quick Corridor Shortcuts",
-                "Manual entry",
-            ],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="t1_ingest_mode_radio"
+def render_project_location(hotspot_mtime: float) -> None:
+    state = st.session_state
+    site = state.active_site
+    st.subheader(":material/place: Project location", anchor=False)
+
+    sources = {
+        "coordinates": "GPS coordinates",
+        "benchmark": "Benchmark site",
+        "shortcuts": "Quick locations",
+        "manual": "Manual entry",
+    }
+    preferred = site["kind"] if site["kind"] != "manual" else "coordinates"
+    source = st.selectbox(
+        "Location source", list(sources), index=list(sources).index(preferred),
+        format_func=sources.__getitem__, key="t1_location_source",
+    )
+
+    if source == "coordinates":
+        latitude_col, longitude_col = st.columns(2, gap="xsmall")
+        latitude = latitude_col.number_input(
+            "Latitude", min_value=-90.0, max_value=90.0, value=float(state.coord_lat),
+            format="%.5f", step=0.01, key=f"t1_input_geo_lat_{state.site_revision}",
         )
-
-        if ingest_mode == "📍 GPS Coordinates (Auto-Detect)":
-            st.caption("Enter coordinates to automatically fetch soil class, rainfall regime, elevation, and salinity baselines:")
-            t1_gc1, t1_gc2, t1_gc3 = st.columns([1.5, 1.5, 1.8])
-            with t1_gc1:
-                t1_in_lat = st.number_input(
-                    "Latitude (°N)",
-                    min_value=-90.0,
-                    max_value=90.0,
-                    value=float(st.session_state.coord_lat),
-                    format="%.5f",
-                    step=0.01,
-                    key=f"t1_input_geo_lat_{st.session_state.site_revision}",
-                )
-            with t1_gc2:
-                t1_in_lon = st.number_input(
-                    "Longitude (°E)",
-                    min_value=-180.0,
-                    max_value=180.0,
-                    value=float(st.session_state.coord_lon),
-                    format="%.5f",
-                    step=0.01,
-                    key=f"t1_input_geo_lon_{st.session_state.site_revision}",
-                )
-            with t1_gc3:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                t1_resolve_btn = st.button(
-                    "Auto-Detect Baseline Parameters",
-                    type="primary",
-                    width="stretch",
-                    icon=":material/download:",
-                    key="btn_t1_resolve_custom_gps"
-                )
-
-            if t1_resolve_btn:
-                with st.spinner(f"Ingesting baseline parameters for ({t1_in_lat:.4f}°N, {t1_in_lon:.4f}°E)..."):
-                    c_site = resolve_coordinate_geotechnics(t1_in_lat, t1_in_lon)
-                    activate_site(coordinate_site(c_site), focus_map=True)
-                    st.rerun()
-
-            if st.session_state.active_site["kind"] == "coordinates":
-                c_site = st.session_state.active_site
-                st.success(
-                    f"**Detected: {c_site['county']}, {c_site['country']}** (Elev: `{c_site['elevation_m']} m a.s.l.`) via **{c_site['data_sources']}**.\n\n"
-                    f"Baseline parameters loaded below. You can customize moisture regime or engineering hazard before running analysis.",
-                    icon=":material/check_circle:"
-                )
-
-        elif ingest_mode == "Regional Benchmark Sites":
-            all_hotspots = load_regional_hotspots(hotspot_mtime)
-            if all_hotspots:
-                st.caption("Select a pre-calculated East Africa civil corridor or benchmark location:")
-                hs_quick_c1, hs_quick_c2 = st.columns([3, 1])
-                with hs_quick_c1:
-                    hs_quick_labels = ["-- Choose a Benchmark Location --"] + [
-                        f"{h['county_region']}: {h['name']}" for h in all_hotspots
-                    ]
-                    sel_quick = st.selectbox(
-                        "Benchmark Location",
-                        hs_quick_labels,
-                        index=0,
-                        label_visibility="collapsed",
-                    )
-                with hs_quick_c2:
-                    if st.button("Apply Location", icon=":material/download:", width="stretch", key="btn_apply_hotspot_preset"):
-                        if sel_quick != hs_quick_labels[0]:
-                            matched_h = next(h for h in all_hotspots if f"{h['county_region']}: {h['name']}" == sel_quick)
-                            activate_site(benchmark_site(matched_h), focus_map=True)
-                            st.rerun()
-
-        elif ingest_mode == "Quick Corridor Shortcuts":
-            st.caption("Click any major infrastructure corridor for 1-click parameter configuration:")
-            t1_p1, t1_p2, t1_p3, t1_p4, t1_p5, t1_p6 = st.columns(6)
-            shortcuts = [
-                (t1_p1, "Nairobi", -1.2921, 36.8219),
-                (t1_p2, "Samburu", 1.0000, 36.8219),
-                (t1_p3, "Eldoret", 0.5143, 35.2698),
-                (t1_p4, "Naivasha", -0.7172, 36.4312),
-                (t1_p5, "Embu", -0.5342, 37.4544),
-                (t1_p6, "Garissa", -0.4532, 39.6461),
-            ]
-            for btn_col, name, lat, lon in shortcuts:
-                if btn_col.button(name, width="stretch", key=f"t1_btn_{name.lower()}"):
-                    c_site = resolve_coordinate_geotechnics(lat, lon)
-                    activate_site(coordinate_site(c_site), focus_map=True)
-                    st.rerun()
-        elif st.session_state.active_site["kind"] != "manual":
-            if st.button("Start a manual assessment"):
-                activate_site(manual_site())
+        longitude = longitude_col.number_input(
+            "Longitude", min_value=-180.0, max_value=180.0, value=float(state.coord_lon),
+            format="%.5f", step=0.01, key=f"t1_input_geo_lon_{state.site_revision}",
+        )
+        if st.button("Locate site", icon=":material/my_location:", key="btn_t1_resolve_custom_gps"):
+            load_location(latitude, longitude)
+    elif source == "benchmark":
+        hotspots = load_regional_hotspots(hotspot_mtime)
+        by_id = {item["id"]: item for item in hotspots}
+        if by_id:
+            labels = {item["id"]: f"{item['county_region']} · {item['name']}" for item in hotspots}
+            options = list(labels)
+            selected = st.selectbox(
+                "Benchmark location", options, index=options.index(site["id"]) if site["id"] in labels else None,
+                format_func=labels.__getitem__, key="t1_benchmark_location", placeholder="Choose a benchmark",
+            )
+            if st.button("Use benchmark", icon=":material/add_location:", key="btn_apply_hotspot_preset", disabled=selected is None):
+                activate_site(benchmark_site(by_id[selected]), focus_map=True)
                 st.rerun()
+        else:
+            st.info("No benchmark locations are available.", icon=":material/info:")
+    elif source == "shortcuts":
+        shortcuts = [
+            ("Nairobi", -1.2921, 36.8219), ("Samburu", 1.0000, 36.8219),
+            ("Eldoret", 0.5143, 35.2698), ("Naivasha", -0.7172, 36.4312),
+            ("Embu", -0.5342, 37.4544), ("Garissa", -0.4532, 39.6461),
+        ]
+        with st.container(horizontal=True, gap="xsmall"):
+            for name, latitude, longitude in shortcuts:
+                if st.button(name, key=f"t1_btn_{name.lower()}"):
+                    load_location(latitude, longitude)
+    elif site["kind"] != "manual":
+        if st.button("Start a manual assessment", icon=":material/edit_note:", key="t1_switch_manual"):
+            activate_site(manual_site())
+            st.rerun()
 
-    with st.container(border=True):
-        st.markdown("##### :material:tune: Step 2 — Review site parameters")
-        render_assessment_inputs("t1", cb_model)
+    with st.container(key="assessment_active_site", gap="xsmall"):
+        st.markdown(f":material/location_on: **{site['name']}**")
+        if site["kind"] == "coordinates":
+            st.caption(f"Elevation · {site['elevation_m']} m · {site['data_sources']}")
+        elif site["kind"] == "benchmark":
+            st.caption(f"Benchmark · {site['county_region']} · {site['elevation_m']} m")
+        else:
+            st.caption("A GPS location or benchmark can prefill the site conditions.")
 
-    # ── BIOMECHANICAL BOUNDARY PRESCREENER (EXPANDABLE) ────────
-    with st.expander("🔍 Scientific Failure Boundaries & Biomechanical Limits", expanded=False):
+
+def load_location(latitude: float, longitude: float) -> None:
+    with st.spinner("Looking up site conditions…"):
+        activate_site(coordinate_site(resolve_coordinate_geotechnics(latitude, longitude)), focus_map=True)
+    st.rerun()
+
+
+def render_suitability_result(assessment: dict) -> None:
+    with st.container(key="assessment_result", border=True):
+        with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+            st.subheader(":material/analytics: Assessment result", anchor=False, width="content")
+            st.download_button(
+                "Download report", data=assessment["report_md"],
+                file_name=f"vetiver_site_assessment_{datetime.now():%Y%m%d_%H%M%S}.md",
+                mime="text/markdown", icon=":material/download:", key="t1_btn_download_report_top",
+                on_click="ignore",
+            )
+        if assessment.get("is_exclusion"):
+            st.error(
+                f"**Screening rule · {assessment['excl_title']}**\n\n{assessment['excl_details']}",
+                icon=":material/block:",
+            )
+
+        suitable = assessment["prediction"] == 1
+        tone = "suitable" if suitable else "unsuitable"
+        if suitable:
+            bio = assessment.get("biomechanics") or calculate_biomechanical_metrics(assessment.get("inputs", {}))
+            badge = "Suitable"
+            title = "Positive geotechnical alignment"
+            summary = bio.get("summary_desc", "")
+            metrics = [
+                (bio.get("kpi1_label", "Root depth potential"), bio.get("kpi1_val", bio["root_depth"])),
+                (bio.get("kpi2_label", "Mean tensile strength"), bio.get("kpi2_val", bio["tensile_strength"])),
+                (bio.get("kpi3_label", "Safety factor boost"), bio.get("kpi3_val", bio["fos_boost"])),
+            ]
+        else:
+            diagnosis = get_failure_banner_details(assessment)
+            badge, title, summary = diagnosis["badge"], diagnosis["title"], diagnosis["subtitle"]
+            metrics = [(diagnosis[f"kpi{i}_title"], diagnosis[f"kpi{i}_val"]) for i in range(1, 4)]
+
+        metric_html = "".join(
+            f'<div><dt>{escape(str(label))}</dt><dd>{escape(str(value))}</dd></div>'
+            for label, value in metrics
+        )
+        st.html(f"""
+            <div class="gis-verdict gis-verdict-{tone}">
+                <div class="gis-verdict-heading">
+                    <div>
+                        <span class="studio-badge badge-{tone}">{escape(badge)}</span>
+                        <h5>{escape(title)}</h5>
+                        <p>{escape(summary)}</p>
+                    </div>
+                    <div class="gis-verdict-score">
+                        <strong>{assessment['probability']:.1f}%</strong>
+                        <span>CatBoost suitability score</span>
+                    </div>
+                </div>
+                <dl class="gis-verdict-metrics">{metric_html}</dl>
+            </div>
+        """)
+
+        if not suitable:
+            render_countermeasures(assessment)
+
+        exp_df = assessment.get("exp_df")
+        if exp_df is not None:
+            with st.expander("Model contributions (TreeSHAP)", icon=":material/bar_chart:"):
+                st.caption("Log-odds contribution of each site condition to the CatBoost score.")
+                st.bar_chart(exp_df.set_index("Feature")["SHAP Impact"])
+                st.dataframe(
+                    exp_df,
+                    column_config={
+                        "Feature": "Site parameter",
+                        "Input Value": "Configured value",
+                        "SHAP Impact": st.column_config.NumberColumn("Log-odds impact", format="%.4f"),
+                        "Effect": "Direction",
+                    },
+                    hide_index=True,
+                    width="stretch",
+                )
+
+        with st.expander("Preview geotechnical report", icon=":material/description:"):
+            st.markdown(assessment["report_md"])
+
+        shap_plot_file = os.path.join(config.DATA_DIR, "shap_summary.png")
+        if os.path.exists(shap_plot_file):
+            with st.expander("Global model feature importance", icon=":material/insights:"):
+                st.image(shap_plot_file, caption="Global mean |SHAP| across the training observations.")
+
+
+def render_countermeasures(assessment: dict) -> None:
+    with st.expander("Recommended countermeasures", icon=":material/handyman:", expanded=True):
+        remed = get_two_tier_remediations(assessment)
+        st.markdown(f"**{remed['primary_title']}**")
+        st.caption(remed["primary_mech"])
+        for protocol, icon in remed["protocols"]:
+            st.markdown(f"{icon} {protocol}")
+
+        st.markdown("##### Field stewardship")
+        stewardship_columns = st.columns(2, gap="small")
+        for index, item in enumerate(remed["stewardship"]):
+            with stewardship_columns[index % 2], st.container(border=True):
+                st.markdown(f"**{item['title']}**")
+                st.markdown(item["body"])
+
+
+def render_boundary_checks() -> None:
+    with st.expander("Biomechanical limits", icon=":material/fact_check:"):
         st.markdown(
             "Test site conditions against the **10 scientifically documented critical failure boundaries** "
             "(*Hengchaovanich 1998, Truong 1994, Perez 2012, KeRRA 2022, MININFRA 2020, KARI 2018*):"
@@ -161,195 +218,46 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
         boundary_warnings = []
         if test_slip_depth > 2.0:
             boundary_warnings.append(
-                f":material/warning: **Deep Slip Surface Failure Risk (Slip Depth {test_slip_depth:.1f} m > 2.0 m):** "
+                f"**Deep Slip Surface Failure Risk (Slip Depth {test_slip_depth:.1f} m > 2.0 m):** "
                 "Shear plane exceeds the effective 1.5–2.0 m root anchorage curtain. Structural nails or micropiles required."
             )
         if test_bulk_density > 1.75:
             boundary_warnings.append(
-                f":material/warning: **Mechanical Root Refusal Risk (Bulk Density {test_bulk_density:.2f} g/cm³ > 1.75 g/cm³):** "
+                f"**Mechanical Root Refusal Risk (Bulk Density {test_bulk_density:.2f} g/cm³ > 1.75 g/cm³):** "
                 "Compaction exceeds penetration threshold. Subsoil ripping required."
             )
         if test_salinity > 16.0:
             boundary_warnings.append(
-                f":material/warning: **Fatal Osmotic Collapse Risk (EC {test_salinity:.1f} dS/m > 16.0 dS/m):** "
+                f"**Fatal Osmotic Collapse Risk (EC {test_salinity:.1f} dS/m > 16.0 dS/m):** "
                 "Exceeds physiological salinity limit. Soil gypsum leaching required."
             )
         if test_shade > 60:
             boundary_warnings.append(
-                f":material/warning: **Photosynthetic Growth Arrest Risk (Canopy Shading {test_shade}% > 60%):** "
+                f"**Photosynthetic Growth Arrest Risk (Canopy Shading {test_shade}% > 60%):** "
                 "Obligate C4 heliophyte requires ≥40% direct sunlight."
             )
         if test_submergence > 21:
             boundary_warnings.append(
-                f":material/warning: **Anoxic Crown Rot Risk (Crown Inundation {test_submergence} days > 21 days):** "
+                f"**Anoxic Crown Rot Risk (Crown Inundation {test_submergence} days > 21 days):** "
                 "Exceeds physiological crown submergence limit."
             )
         if test_elevation > 2200:
             boundary_warnings.append(
-                f":material/warning: **Cold Vegetative Arrest Risk (Elevation {test_elevation} m > 2,200 m a.s.l.):** "
+                f"**Cold Vegetative Arrest Risk (Elevation {test_elevation} m > 2,200 m a.s.l.):** "
                 "Low temperatures inhibit root elongation. Montane companion grasses advised."
             )
 
         if boundary_warnings:
             for w in boundary_warnings:
-                st.warning(w)
+                st.warning(w, icon=":material/warning:")
         else:
             st.success("**All Biophysical Parameters Within Safe Vetiver Operating Envelope** (Slip ≤ 2.0 m, BD ≤ 1.75 g/cm³, EC ≤ 16 dS/m, Shade ≤ 60%, Submergence ≤ 21 d, Elevation ≤ 2,200 m).", icon=":material/verified:")
 
-    # ── STEP 3: RENDER ASSESSMENT RESULTS ──────────────────────
-    if st.session_state.current_assessment is not None:
-        assessment = st.session_state.current_assessment
-        pred = assessment["prediction"]
-        prob = assessment["probability"]
-        exp_df = assessment["exp_df"]
-        report_md = assessment["report_md"]
 
-        st.divider()
-        st.markdown("##### :material/analytics: Step 3: Slope Stability Verdict & Biological Reinforcement")
 
-        # 0. Domain Exclusion Override Alert
-        if assessment.get("is_exclusion"):
-            st.error(
-                f"**CRITICAL BIOMECHANICAL BOUNDARY EXCLUSION: {assessment['excl_title']}**\n\n"
-                f"{assessment['excl_details']}",
-                icon=":material/block:",
-            )
-
-        # 1. Executive Banner
-        if pred == 1:
-            kpi_bio = assessment.get("biomechanics") or calculate_biomechanical_metrics(assessment.get("inputs", {}))
-            st.markdown(f"""
-                <div class="verdict-banner-suitable">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-                        <div>
-                            <span style="background: #16A34A; color: white; font-size: 0.75rem; font-weight: 700; padding: 4px 12px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.05em;">Positive Geotechnical Alignment</span>
-                            <h2 style="color: #14532D; margin: 10px 0 6px 0; font-size: 1.55rem; font-weight: 800;">VERDICT: SUITABLE FOR VETIVER BIO-ENGINEERING</h2>
-                            <p style="color: #166534; font-size: 0.95rem; margin: 0; line-height: 1.45;">{kpi_bio.get('summary_desc', 'Site parameters align with empirical stabilization baselines. Conditions support deep root anchoring without critical chemical or moisture limits.')}</p>
-                        </div>
-                        <div style="text-align: right; min-width: 140px;">
-                            <div style="font-size: 2.2rem; font-weight: 900; color: #14532D; line-height: 1;">{prob:.1f}%</div>
-                            <div style="font-size: 0.76rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-top: 4px;">CatBoost suitability score</div>
-                        </div>
-                    </div>
-                    <div class="kpi-row">
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{kpi_bio.get('kpi1_label', 'Root Depth Potential')}</div>
-                            <div class="kpi-chip-val" style="color: #166534;">{kpi_bio.get('kpi1_val', kpi_bio['root_depth'])}</div>
-                        </div>
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{kpi_bio.get('kpi2_label', 'Mean Tensile Strength')}</div>
-                            <div class="kpi-chip-val" style="color: #166534;">{kpi_bio.get('kpi2_val', kpi_bio['tensile_strength'])}</div>
-                        </div>
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{kpi_bio.get('kpi3_label', 'Safety Factor Boost')}</div>
-                            <div class="kpi-chip-val" style="color: #166534;">{kpi_bio.get('kpi3_val', kpi_bio['fos_boost'])}</div>
-                        </div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            diag = get_failure_banner_details(assessment)
-            st.markdown(f"""
-                <div class="verdict-banner-unsuitable">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-                        <div>
-                            <span style="background: #DC2626; color: white; font-size: 0.75rem; font-weight: 700; padding: 4px 12px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.05em;">{diag['badge']}</span>
-                            <h2 style="color: #7F1D1D; margin: 10px 0 6px 0; font-size: 1.55rem; font-weight: 800;">{diag['title']}</h2>
-                            <p style="color: #991B1B; font-size: 0.95rem; margin: 0; line-height: 1.45;">{diag['subtitle']}</p>
-                        </div>
-                        <div style="text-align: right; min-width: 140px;">
-                            <div style="font-size: 2.2rem; font-weight: 900; color: #7F1D1D; line-height: 1;">{prob:.1f}%</div>
-                            <div style="font-size: 0.76rem; font-weight: 700; color: #991B1B; text-transform: uppercase; margin-top: 4px;">CatBoost suitability score</div>
-                        </div>
-                    </div>
-                    <div class="kpi-row">
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{diag['kpi1_title']}</div>
-                            <div class="kpi-chip-val" style="color: #991B1B;">{diag['kpi1_val']}</div>
-                        </div>
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{diag['kpi2_title']}</div>
-                            <div class="kpi-chip-val" style="color: #991B1B;">{diag['kpi2_val']}</div>
-                        </div>
-                        <div class="kpi-chip">
-                            <div class="kpi-chip-title">{diag['kpi3_title']}</div>
-                            <div class="kpi-chip-val" style="color: #991B1B;">{diag['kpi3_val']}</div>
-                        </div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        # 1-Click Direct Report Download
-        st.download_button(
-            label="Download Full Geotechnical Suitability Report (.md)",
-            data=report_md,
-            file_name=f"vetiver_site_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-            mime="text/markdown",
-            icon=":material/download:",
-            width="stretch",
-            key="t1_btn_download_report_top",
-        )
-
-        # 2. Scientist Mitigations (if unsuitable)
-        if pred == 0:
-            with st.expander("🛠️ Scientist-Recommended Countermeasures & Remediations", expanded=True):
-                remed = get_two_tier_remediations(assessment)
-
-                # Tier 1: Targeted Primary Engineering Prescription
-                st.markdown(f"#### :material/build: Tier 1: Targeted Engineering Prescription ({remed['primary_title']})")
-                st.info(f"**Biomechanical Limit Mechanism:** {remed['primary_mech']}", icon=":material/info:")
-
-                p_cols = st.columns(len(remed['protocols']))
-                for col, (proto_text, proto_icon) in zip(p_cols, remed['protocols']):
-                    with col:
-                        st.markdown(f"""
-                        <div style="background: #FFF5F5; border: 1px solid #FECACA; border-top: 3px solid #DC2626; border-radius: 8px; padding: 14px; height: 100%;">
-                            <p style="font-size: 0.88rem; line-height: 1.45; margin: 0; color: #7F1D1D;">{proto_text}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-
-                # Tier 2: Universal Field Stewardship & Biological Prerequisites
-                st.markdown("#### Tier 2: Universal Field Stewardship & Environmental Prerequisites")
-                st.caption("Essential operational field standards required on every bioengineering installation to prevent preventable vegetative failure:")
-
-                s_c1, s_c2 = st.columns(2)
-                for idx, item in enumerate(remed['stewardship']):
-                    target_col = s_c1 if idx % 2 == 0 else s_c2
-                    with target_col:
-                        st.markdown(f"""
-                        <div style="background: #F8FAF9; border: 1px solid #E2E8F0; border-left: 3px solid #16A34A; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
-                            <div style="font-weight: 700; font-size: 0.92rem; color: #0F172A; margin-bottom: 4px;">{item['title']}</div>
-                            <div style="font-size: 0.86rem; color: #475569; line-height: 1.4;">{item['body']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-        # 3. Decision Explainability (SHAP) - Cleanly Collapsed
-        with st.expander("📊 AI Decision Attribution (Why did the model reach this verdict?)", expanded=False):
-            st.caption("Mathematical contribution (log-odds impact) of each site condition toward the CatBoost score.")
-            chart_data = exp_df.set_index("Feature")["SHAP Impact"]
-            st.bar_chart(chart_data)
-
-            st.dataframe(
-                exp_df,
-                column_config={
-                    "Feature": "Site Parameter",
-                    "Input Value": "Configured Value",
-                    "SHAP Impact": st.column_config.NumberColumn("SHAP Value (Log-Odds Impact)", format="%.4f"),
-                    "Effect": "Directional Influence",
-                },
-                hide_index=True,
-                width="stretch",
-            )
-
-        # ── STEP 4: FIELD ENGINEERING DESIGN & BOQ SUITE ───────────
-        st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
-        st.markdown("##### :material/architecture: Step 4: Field Engineering & Material Estimator")
-        
-        # Shared Slope Geometry Control Bar
-        with st.container(border=True):
-            st.caption("Configure physical slope dimensions for 2D stability simulation, BOQ budgeting, and growth timelines:")
+def render_engineering_tools(assessment: dict) -> None:
+    with st.expander("Engineering tools", icon=":material/architecture:"):
+        with st.expander("Slope geometry", icon=":material/straighten:"):
             cs_col1, cs_col2, cs_col3, cs_col4 = st.columns(4)
             with cs_col1:
                 ui_slope_h = st.slider("Slope Height (m)", min_value=2.0, max_value=20.0, value=6.0, step=0.5, key="ui_cs_height")
@@ -389,19 +297,17 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
             design_slip_depth_m=ui_slip_z,
         )
 
-        design_view = st.radio(
-            "Engineering View Selection",
-            [
-                "📐 2D Slope Stability Cross-Section",
-                "📋 Contractor Bill of Quantities (BoQ)",
-                "⏳ 12-Month Growth & Maturation Timeline",
-            ],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="t1_design_view_radio"
+        views = {
+            "cross_section": ":material/terrain: Cross-section",
+            "materials": ":material/list_alt: Bill of quantities",
+            "growth": ":material/timeline: Growth timeline",
+        }
+        design_view = st.segmented_control(
+            "Engineering view", list(views), default="cross_section", required=True,
+            format_func=views.__getitem__, key="t1_engineering_view", label_visibility="collapsed",
         )
 
-        if design_view == "📐 2D Slope Stability Cross-Section":
+        if design_view == "cross_section":
             st.plotly_chart(cs_fig, width="stretch")
 
             # Scorecard row
@@ -436,8 +342,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 ''', unsafe_allow_html=True)
 
             # Dynamic Sensitivity Curves (Collapsible)
-            st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-            with st.expander("📈 Dynamic Sensitivity Curves (FoS vs Slope Angle & Groundwater Table)", expanded=False):
+            with st.expander("Sensitivity curves", icon=":material/show_chart:"):
                 sens_c1, sens_c2 = st.columns([2.5, 1.5])
                 with sens_c1:
                     sens_mode = st.radio(
@@ -463,7 +368,7 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 )
                 st.plotly_chart(sens_fig, width="stretch")
 
-        elif design_view == "📋 Contractor Bill of Quantities (BoQ)":
+        elif design_view == "materials":
             st.caption("Contractor-grade planting geometry and material budget estimate:")
             boq_c1, boq_c2, boq_c3 = st.columns(3)
             with boq_c1:
@@ -554,11 +459,25 @@ def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
                 icon=":material/calendar_month:"
             )
 
-        # 5. Full Report Preview & SHAP Summary (Collapsible)
-        with st.expander("📄 Preview Full Geotechnical Engineering Report", icon=":material/description:"):
-            st.markdown(report_md)
 
-        shap_plot_file = os.path.join(config.DATA_DIR, "shap_summary.png")
-        if os.path.exists(shap_plot_file):
-            with st.expander("📊 View Global Model Feature Importance (SHAP Summary)", icon=":material/bar_chart:"):
-                st.image(shap_plot_file, caption="Global Mean |SHAP| values computed across all empirical and failure boundaries.")
+def render_tab_assessment(cb_model=None, hotspot_mtime: float = 0.0) -> None:
+    with st.container(key="vetiver_assessment", gap="small"):
+        with st.container(key="assessment_header", gap="xsmall"):
+            st.subheader("Site Assessment", anchor=False)
+            st.caption("Set the project location and review site conditions before running the assessment.")
+
+        with st.container(key="assessment_setup", gap=None):
+            location_col, conditions_col = st.columns([1, 1.55], gap="small", border=True)
+
+        with location_col:
+            render_project_location(hotspot_mtime)
+        with conditions_col:
+            st.subheader(":material/tune: Site conditions", anchor=False)
+            render_assessment_inputs("t1", cb_model, show_site=False)
+
+        assessment = st.session_state.current_assessment
+        if assessment is not None:
+            render_suitability_result(assessment)
+        render_boundary_checks()
+        if assessment is not None:
+            render_engineering_tools(assessment)

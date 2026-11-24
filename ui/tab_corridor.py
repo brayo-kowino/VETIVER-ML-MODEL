@@ -1,4 +1,5 @@
 from datetime import datetime
+from html import escape
 
 import streamlit as st
 import pandas as pd
@@ -21,7 +22,7 @@ def render_shortlist() -> None:
     def remove_site(site_id: str) -> None:
         state.site_shortlist = {key: value for key, value in shortlist.items() if key != site_id}
         state.gis_compare_sites = [key for key in state.gis_compare_sites if key != site_id]
-    with st.expander("Compare shortlisted sites", expanded=True):
+    with st.expander("Compare shortlisted sites", icon=":material/compare_arrows:"):
         st.caption("Assessments are saved for this session.")
         site_ids = st.multiselect(
             "Sites to compare",
@@ -59,583 +60,549 @@ def render_shortlist() -> None:
                 st.button("Remove from shortlist", key=f"gis_remove_{site_id}", on_click=remove_site, args=(site_id,))
 
 
+def locate_site(latitude: float, longitude: float) -> None:
+    with st.spinner("Looking up site conditions…"):
+        resolved = resolve_coordinate_geotechnics(latitude, longitude)
+        activate_site(coordinate_site(resolved), focus_map=True)
+    st.session_state.gis_close_finder = True
+    st.rerun()
+
+
+def render_location_picker() -> None:
+    state = st.session_state
+    search, action = st.columns([2.6, 1], vertical_alignment="bottom")
+    query = search.text_input("Place name", placeholder="Town or landmark", key="t2_place_search")
+    if action.button("Search", width="stretch", key="btn_t2_place_search"):
+        state.location_search_results = search_location(query.strip()) if query.strip() else []
+        if not state.location_search_results:
+            message = "No places matched. Try a town, county, or landmark." if query.strip() else "Enter a place name."
+            st.warning(message)
+
+    if state.location_search_results:
+        results = state.location_search_results
+        selected = st.selectbox(
+            "Search result", [result["display_name"] for result in results], key="t2_place_search_result"
+        )
+        if st.button("Use selected location", type="primary", width="stretch", key="btn_t2_use_search_result"):
+            result = next(result for result in results if result["display_name"] == selected)
+            locate_site(result["latitude"], result["longitude"])
+
+    st.divider()
+    coordinate_key = f"{state.coord_lat}_{state.coord_lon}"
+    latitude_col, longitude_col = st.columns(2)
+    latitude = latitude_col.number_input(
+        "Latitude", -90.0, 90.0, value=float(state.coord_lat), format="%.5f", step=0.01,
+        key=f"t2_in_lat_{coordinate_key}",
+    )
+    longitude = longitude_col.number_input(
+        "Longitude", -180.0, 180.0, value=float(state.coord_lon), format="%.5f", step=0.01,
+        key=f"t2_in_lon_{coordinate_key}",
+    )
+    if st.button("Locate coordinates", type="primary", width="stretch", key="btn_t2_locate"):
+        locate_site(latitude, longitude)
+
+    st.caption("Quick locations")
+    shortcuts = [
+        ("Nairobi", -1.2921, 36.8219), ("Samburu", 1.0000, 36.8219),
+        ("Eldoret", 0.5143, 35.2698), ("Naivasha", -0.7172, 36.4312),
+        ("Embu", -0.5342, 37.4544), ("Garissa", -0.4532, 39.6461),
+    ]
+    with st.container(horizontal=True, gap="xsmall"):
+        for name, lat, lon in shortcuts:
+            if st.button(name, key=f"t2_pill_{name.lower()}"):
+                locate_site(lat, lon)
+
+
+def render_hotspot_map(
+    filtered_hotspots: list[dict],
+    active_hotspot: dict | None,
+    custom_site: dict | None,
+    scope_mode: str,
+    default_camera: tuple[float, float, float, float],
+    map_style: str,
+    show_3d_elevation: bool,
+    inspect_hotspot,
+) -> None:
+    default_lat, default_lon, default_zoom, default_pitch = default_camera
+    # Pin inspection leaves the initial view unchanged so deck.gl keeps the current camera.
+    focus = st.session_state.get("gis_camera_focus")
+    if focus:
+        map_lat, map_lon = focus
+        map_zoom, map_pitch = 9.8, 40
+    else:
+        map_lat, map_lon = default_lat, default_lon
+        map_zoom, map_pitch = default_zoom, default_pitch
+
+    view_state = pdk.ViewState(
+        latitude=map_lat,
+        longitude=map_lon,
+        zoom=map_zoom,
+        pitch=map_pitch,
+        bearing=0,
+    )
+
+    df_map = pd.DataFrame(filtered_hotspots)
+    df_active = pd.DataFrame([active_hotspot] if active_hotspot else [])
+
+    # Layer 1: Base Hotspot Pins (Interactive Scatterplot)
+    scatter_layer = pdk.Layer(
+        "ScatterplotLayer",
+        id="hotspot-scatter",
+        data=df_map,
+        get_position=["longitude", "latitude"],
+        get_color="color",
+        pickable=True,
+        auto_highlight=True,
+        highlight_color=[250, 204, 21, 220],
+        radius_min_pixels=10,
+        radius_max_pixels=24,
+        stroked=True,
+        filled=True,
+        line_width_min_pixels=2.5,
+        get_line_color=[255, 255, 255, 255],
+    )
+
+    # Layer 2: Active Focused Beacon Ring (Electric Cyan Halo)
+    halo_layer = pdk.Layer(
+        "ScatterplotLayer",
+        id="hotspot-active-halo",
+        data=df_active,
+        get_position=["longitude", "latitude"],
+        get_color=[0, 0, 0, 0],
+        stroked=True,
+        filled=False,
+        radius_min_pixels=18,
+        radius_max_pixels=34,
+        line_width_min_pixels=3.5,
+        get_line_color=[56, 189, 248, 255],
+        pickable=False,
+    )
+
+    # Layer 3: Clean Pill Badges with Site Short Names
+    text_layer = pdk.Layer(
+        "TextLayer",
+        id="hotspot-labels",
+        data=df_map,
+        get_position=["longitude", "latitude"],
+        get_text="short_label",
+        get_size=12,
+        get_color=[255, 255, 255, 255],
+        get_text_anchor="'start'",
+        get_alignment_baseline="'center'",
+        pixel_offset=[14, -1],
+        background=True,
+        get_background_color=[15, 23, 42, 225],
+        background_padding=[4, 7, 4, 7],
+        pickable=True,
+    )
+
+    map_layers = [scatter_layer, halo_layer, text_layer]
+
+    # Optional Layer 4: Custom Queried GPS Target Beacon Layer
+    if custom_site is not None:
+        c_site = custom_site
+        df_custom = pd.DataFrame([{
+            "latitude": c_site["latitude"],
+            "longitude": c_site["longitude"],
+            "name": f"Target: {c_site['county']}",
+            "county_region": c_site["county"],
+            "country": c_site["country"],
+            "elevation_m": c_site["elevation_m"],
+            "status": "Queried GPS Coordinate",
+            "soil_mechanical_class": c_site["soil_mechanical_class"],
+            "climate_rainfall_zone": c_site["climate_rainfall_zone"],
+            "kpi1": f"Salinity: {c_site['salinity_tier']}",
+            "kpi2": f"Hazard: {c_site['default_hazard']}",
+            "citation": c_site["data_sources"],
+        }])
+
+        custom_scatter = pdk.Layer(
+            "ScatterplotLayer",
+            id="custom-target-scatter",
+            data=df_custom,
+            get_position=["longitude", "latitude"],
+            get_color=[245, 158, 11, 240],  # Glowing Amber
+            pickable=True,
+            auto_highlight=True,
+            highlight_color=[251, 191, 36, 255],
+            radius_min_pixels=13,
+            radius_max_pixels=28,
+            stroked=True,
+            filled=True,
+            line_width_min_pixels=3,
+            get_line_color=[255, 255, 255, 255],
+        )
+        custom_halo = pdk.Layer(
+            "ScatterplotLayer",
+            id="custom-target-halo",
+            data=df_custom,
+            get_position=["longitude", "latitude"],
+            get_color=[0, 0, 0, 0],
+            stroked=True,
+            filled=False,
+            radius_min_pixels=24,
+            radius_max_pixels=46,
+            line_width_min_pixels=3.5,
+            get_line_color=[245, 158, 11, 220],
+            pickable=False,
+        )
+        custom_text = pdk.Layer(
+            "TextLayer",
+            id="custom-target-labels",
+            data=df_custom,
+            get_position=["longitude", "latitude"],
+            get_text="name",
+            get_size=13,
+            get_color=[255, 255, 255, 255],
+            get_text_anchor="'start'",
+            get_alignment_baseline="'center'",
+            pixel_offset=[16, -1],
+            background=True,
+            get_background_color=[180, 83, 9, 235],
+            background_padding=[4, 8, 4, 8],
+            pickable=True,
+        )
+        map_layers.extend([custom_scatter, custom_halo, custom_text])
+
+    # Optional Layer 5: 3D Elevation Columns
+    if show_3d_elevation:
+        column_layer = pdk.Layer(
+            "ColumnLayer",
+            id="hotspot-pillars",
+            data=df_map,
+            get_position=["longitude", "latitude"],
+            get_elevation="elevation_m",
+            elevation_scale=3.5,
+            radius=1200,
+            get_fill_color="color",
+            pickable=False,
+        )
+        map_layers.insert(0, column_layer)
+
+    deck = pdk.Deck(
+        layers=map_layers,
+        initial_view_state=view_state,
+        map_style=map_style,
+        tooltip={
+            "html": """
+                <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #F8FAFC; background: #0F172A; padding: 12px; border-radius: 8px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 320px;">
+                    <div style="font-weight: 800; font-size: 14px; color: #38BDF8; margin-bottom: 4px;">{name}</div>
+                    <div style="color: #94A3B8; margin-bottom: 6px; font-size: 12px;">{county_region}, {country} &bull; Elev: {elevation_m} m a.s.l.</div>
+                    <div style="margin-bottom: 4px;"><b>Site status:</b> <span style="font-weight: 700;">{status}</span></div>
+                    <div style="margin-bottom: 4px;"><b>USCS Soil Class:</b> {soil_mechanical_class}</div>
+                    <div style="margin-bottom: 4px;"><b>Precipitation Zone:</b> {climate_rainfall_zone}</div>
+                    <div style="margin-bottom: 4px;"><b>Key Metric:</b> {kpi1} | {kpi2}</div>
+                    <div style="font-size: 11px; color: #38BDF8; margin-top: 6px; border-top: 1px solid #334155; padding-top: 4px;"><i>Left-click this pin to inspect engineering parameters.</i></div>
+                </div>
+            """,
+            "style": {"zIndex": "1000"}
+        }
+    )
+
+    revision = st.session_state.get("hotspot_map_revision", 0)
+    deck_chart_key = f"pdk_gis_hotspot_selector_{scope_mode}_{revision}_{tuple(h['id'] for h in filtered_hotspots)}"
+
+    def select_map_hotspot():
+        selection = st.session_state[deck_chart_key].selection
+        for layer_id in ("hotspot-scatter", "hotspot-labels"):
+            objects = selection.get("objects", {}).get(layer_id, [])
+            hotspot_id = objects[0].get("id") if objects and isinstance(objects[0], dict) else None
+            if isinstance(hotspot_id, str):
+                inspect_hotspot(hotspot_id)
+                return
+
+            indices = selection.get("indices", {}).get(layer_id, [])
+            if indices and isinstance(indices[0], int) and 0 <= indices[0] < len(filtered_hotspots):
+                inspect_hotspot(filtered_hotspots[indices[0]]["id"])
+                return
+
+    with st.container(key="gis_hotspot_map", gap=None):
+        st.pydeck_chart(
+            deck,
+            width="stretch",
+            height=420,
+            on_select=select_map_hotspot,
+            selection_mode="single-object",
+            key=deck_chart_key,
+        )
+        st.html(
+            """
+            <script>
+            (() => {
+                const map = document.currentScript.closest('.st-key-gis_hotspot_map');
+                if (!map || map.dataset.contextMenuDisabled) return;
+
+                map.addEventListener('contextmenu', (event) => event.preventDefault(), { capture: true });
+                map.dataset.contextMenuDisabled = 'true';
+            })();
+            </script>
+            """,
+            unsafe_allow_javascript=True,
+        )
+
+
+def render_site_details(site: dict) -> None:
+    state = st.session_state
+    custom_site = site["kind"] == "coordinates"
+    with st.container(key="gis_site_card", border=True, gap="small"):
+        if site["kind"] == "manual":
+            st.subheader("Active site", anchor=False)
+            st.caption("Select a map pin, choose a benchmark, or use Find site to see its details here.")
+            return
+
+        with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+            st.subheader(site["name"], anchor=False)
+            if custom_site and st.button("Clear GPS site", key="btn_t2_clear"):
+                activate_site(manual_site())
+                state.gis_camera_focus = None
+                st.rerun()
+
+        badges = [("blue", f"Elevation · {site['elevation_m']} m")]
+        badges.append(("amber", f"GPS · {site['latitude']:.4f}°, {site['longitude']:.4f}°"))
+        if custom_site:
+            badges.append(("blue", site["data_sources"]))
+        else:
+            status = site["status"]
+            tone = "suitable" if status == "Suitable" else "unsuitable"
+            badges.insert(0, (tone, f"Benchmark · {status}"))
+        st.html(
+            '<div class="gis-site-badges">' + "".join(
+                f'<span class="studio-badge badge-{tone}">{escape(str(label))}</span>' for tone, label in badges
+            ) + '</div>'
+        )
+
+        with st.expander("Site evidence", icon=":material/article:", expanded=True):
+            if not custom_site:
+                st.markdown(site["summary_desc"])
+                st.caption(site["citation"])
+            elif site["is_known_hotspot"]:
+                match = site["matched_hotspot"]
+                st.markdown(f"**Nearby benchmark · {match['name']}** ({site['distance_to_nearest_km']} km away)")
+                st.caption(match["summary_desc"])
+            else:
+                st.caption(f"Nearest documented benchmark is {site['distance_to_nearest_km']} km away.")
+            if site.get("notes"):
+                st.caption(site["notes"])
+
+
+def render_site_assessment(site: dict, cb_model) -> None:
+    with st.container(key="gis_inputs_card", border=True):
+        st.markdown("#### Assessment inputs")
+        render_assessment_inputs("t2", cb_model, column_count=3, show_site=False)
+
+    result = st.session_state.current_assessment
+    if result is not None:
+        render_assessment_result(result, site["id"])
+
+
+def render_assessment_result(result: dict, site_id: str) -> None:
+    state = st.session_state
+    suitable = result["prediction"] == 1
+    if suitable:
+        bio = result.get("biomechanics") or calculate_biomechanical_metrics(result.get("inputs", {}))
+        badge = "Suitable"
+        title = "Positive geotechnical alignment"
+        summary = bio.get("summary_desc", "")
+        metrics = [
+            ("Root depth", bio.get("kpi1_val", bio["root_depth"])),
+            ("Added cohesion", bio.get("kpi2_val", bio["root_cohesion"])),
+            ("FoS boost", bio.get("kpi3_val", bio["fos_boost"])),
+        ]
+    else:
+        diagnosis = get_failure_banner_details(result)
+        badge, title, summary = diagnosis["badge"], diagnosis["title"], diagnosis["subtitle"]
+        metrics = [(diagnosis[f"kpi{i}_title"], diagnosis[f"kpi{i}_val"]) for i in range(1, 4)]
+
+    tone = "suitable" if suitable else "unsuitable"
+    metric_html = "".join(
+        f'<div><dt>{escape(str(label))}</dt><dd>{escape(str(value))}</dd></div>'
+        for label, value in metrics
+    )
+    with st.container(key="gis_result_card", border=True):
+        st.markdown("#### Assessment result")
+        if result["is_exclusion"]:
+            st.warning(f"Screening rule override · {result['excl_title']}")
+        st.html(f"""
+            <div class="gis-verdict gis-verdict-{tone}">
+                <div class="gis-verdict-heading">
+                    <div>
+                        <span class="studio-badge badge-{tone}">{escape(badge)}</span>
+                        <h5>{escape(title)}</h5>
+                        <p>{escape(summary)}</p>
+                    </div>
+                    <div class="gis-verdict-score">
+                        <strong>{result['probability']:.1f}%</strong>
+                        <span>CatBoost suitability score</span>
+                    </div>
+                </div>
+                <dl class="gis-verdict-metrics">{metric_html}</dl>
+            </div>
+        """)
+        with st.container(horizontal=True, gap="small"):
+            if result.get("report_md"):
+                st.download_button(
+                    "Download geotechnical report",
+                    data=result["report_md"],
+                    file_name=f"vetiver_site_assessment_{datetime.now():%Y%m%d_%H%M%S}.md",
+                    mime="text/markdown",
+                    icon=":material/download:",
+                    key="btn_t2_download_report",
+                )
+            if st.button("Save to shortlist", key="gis_save_site", icon=":material/bookmark:"):
+                state.site_shortlist = {**state.site_shortlist, site_id: result}
+                st.toast("Assessment saved to the shortlist.", icon=":material/bookmark:")
+
+        if result.get("exp_df") is not None:
+            with st.expander("Model contributions (TreeSHAP)", icon=":material/bar_chart:"):
+                st.bar_chart(result["exp_df"].set_index("Feature")["SHAP Impact"])
+                st.dataframe(
+                    result["exp_df"],
+                    column_config={
+                        "Feature": "Parameter",
+                        "Input Value": "Configured",
+                        "SHAP Impact": st.column_config.NumberColumn("Log-odds impact", format="%.4f"),
+                        "Effect": "Direction",
+                    },
+                    hide_index=True,
+                    width="stretch",
+                )
+
+        if not suitable:
+            with st.expander("Recommended countermeasures", icon=":material/handyman:"):
+                remed = get_two_tier_remediations(result)
+                st.markdown(f"**Targeted action · {remed['primary_title']}**")
+                st.caption(remed["primary_mech"])
+                for protocol, _ in remed["protocols"]:
+                    st.markdown(f"- {protocol}")
+
+
 @st.fragment
 def render_tab_corridor(cb_model=None, hotspot_mtime: float = 0.0) -> None:
-    st.subheader("Regional Hotspots & 3D GIS Map", anchor=False)
-
     hotspots = load_regional_hotspots(hotspot_mtime)
-    if not hotspots:
-        st.warning("No regional hotspot database found at data/regional_hotspots.json.", icon=":material/warning:")
-    else:
-        # Top Compact Bar: Geographic Scope, Basemap Style, 3D Elevation
-        top_c1, top_c2, top_c3 = st.columns([1.8, 1.3, 0.9])
-        with top_c1:
-            scope_mode = st.radio(
-                "Geographic Scope Filter",
-                ["Kenya Corridors & Counties (Detailed)", "East Africa Regional Sites", "All Global Benchmark Sites"],
-                horizontal=True,
-                key="gis_scope",
-                help="Switch between Kenya national corridors, regional East Africa, or global benchmark sites."
+    state = st.session_state
+
+    with st.container(key="vetiver_gis", gap="small"):
+        if not hotspots:
+            st.subheader("3D GIS Studio", anchor=False)
+            st.warning("The regional benchmark data could not be loaded.")
+            return
+
+        if state.pop("gis_close_finder", False):
+            state.gis_find_site = False
+        with st.container(
+            key="gis_header", horizontal=True, horizontal_alignment="distribute", vertical_alignment="center",
+        ):
+            st.subheader("3D GIS Studio", anchor=False, width="content")
+            with st.container(horizontal=True, width="content", gap="xsmall"):
+                with st.popover("Find site", icon=":material/search:", key="gis_find_site", on_change="rerun"):
+                    render_location_picker()
+                settings = st.popover("Map settings", icon=":material/tune:")
+
+        with st.container(key="gis_map_toolbar", border=True):
+            region, benchmark = st.columns([1, 2.2])
+            scope_labels = {
+                "Kenya Corridors & Counties (Detailed)": "Kenya",
+                "East Africa Regional Sites": "East Africa",
+                "All Global Benchmark Sites": "Global",
+            }
+            scope_mode = region.selectbox("Region", list(scope_labels), format_func=scope_labels.__getitem__, key="gis_scope")
+            if scope_labels[scope_mode] == "Kenya":
+                scoped_hotspots = [hotspot for hotspot in hotspots if hotspot.get("country") == "Kenya"]
+                default_camera = (0.2, 37.8, 6.5, 30)
+            elif scope_labels[scope_mode] == "East Africa":
+                scoped_hotspots = [
+                    hotspot for hotspot in hotspots if hotspot.get("country") in {"Kenya", "Ethiopia", "Zambia", "Zimbabwe"}
+                ]
+                default_camera = (-2.0, 34.5, 4.8, 25)
+            else:
+                scoped_hotspots = hotspots
+                default_camera = (5.0, 25.0, 2.2, 20)
+
+            with settings:
+                style_urls = {
+                    "Voyager": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+                    "Positron": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                    "Dark Matter": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+                }
+                basemap = st.selectbox("Basemap", list(style_urls), key="gis_basemap")
+                show_3d_elevation = st.toggle("Show elevation pillars", key="gis_show_elevation")
+                counties = st.multiselect(
+                    "County or region", sorted({h["county_region"] for h in scoped_hotspots}), key=f"gis_counties_{scope_mode}"
+                )
+                statuses = st.multiselect(
+                    "Benchmark status", sorted({h["status"] for h in scoped_hotspots}), key=f"gis_statuses_{scope_mode}"
+                )
+
+            filtered = [
+                hotspot for hotspot in scoped_hotspots
+                if (not counties or hotspot["county_region"] in counties)
+                and (not statuses or hotspot["status"] in statuses)
+            ]
+            site = state.active_site
+            custom_site = site if site["kind"] == "coordinates" else None
+            hotspots_by_id = {h["id"]: h for h in filtered}
+            active_hotspot = hotspots_by_id.get(site["id"])
+            dropdown_key = "t2_hs_dropdown"
+            selected_id = active_hotspot["id"] if active_hotspot else None
+            if state.get(dropdown_key) != selected_id:
+                state[dropdown_key] = selected_id
+
+            def inspect_hotspot(hotspot_id: str | None, *, focus_map: bool = False) -> None:
+                hotspot = hotspots_by_id.get(hotspot_id)
+                if hotspot is not None:
+                    activate_site(benchmark_site(hotspot), focus_map=focus_map)
+
+            def jump_to_hotspot() -> None:
+                inspect_hotspot(state[dropdown_key], focus_map=True)
+                state.hotspot_map_revision = state.get("hotspot_map_revision", 0) + 1
+
+            labels = {h["id"]: f"{h['county_region']} · {h['name']}" for h in filtered}
+            benchmark.selectbox(
+                "Jump to benchmark", list(labels), index=None, format_func=labels.__getitem__,
+                key=dropdown_key, on_change=jump_to_hotspot, disabled=not labels,
+                placeholder="Choose a benchmark or select a map pin",
             )
-
-        if "Kenya" in scope_mode:
-            filtered_hotspots = [h for h in hotspots if h.get("country") == "Kenya"]
-            default_lat, default_lon, default_zoom, default_pitch = 0.2, 37.8, 6.5, 30
-        elif "East Africa" in scope_mode:
-            filtered_hotspots = [h for h in hotspots if h.get("country") in ["Kenya", "Ethiopia", "Zambia", "Zimbabwe"]]
-            default_lat, default_lon, default_zoom, default_pitch = -2.0, 34.5, 4.8, 25
-        else:
-            filtered_hotspots = hotspots
-            default_lat, default_lon, default_zoom, default_pitch = 5.0, 25.0, 2.2, 20
-
-        with top_c2:
-            map_style_choice = st.selectbox(
-                "Cartographic Basemap",
-                ["Positron (Light Boundaries & Roads)", "Voyager (Topography & Contours)", "Dark Matter (High-Contrast GIS)"],
-                index=1,
-                help="Select your preferred cartographic tile style."
-            )
-        with top_c3:
-            st.markdown("<div style='margin-top: 26px;'></div>", unsafe_allow_html=True)
-            show_3d_elevation = st.checkbox("3D Elevation", value=False, help="Render slender 3D bio-engineering pillars indicating site altitude.")
-
-        # Map style URL mapping
-        style_url_map = {
-            "Positron (Light Boundaries & Roads)": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-            "Voyager (Topography & Contours)": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-            "Dark Matter (High-Contrast GIS)": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        }
-        selected_style_url = style_url_map.get(map_style_choice, "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json")
-
-        county_col, status_col = st.columns(2)
-        counties = sorted({h["county_region"] for h in filtered_hotspots})
-        statuses = sorted({h["status"] for h in filtered_hotspots})
-        counties_selected = county_col.multiselect("County or region", counties, key=f"gis_counties_{scope_mode}")
-        statuses_selected = status_col.multiselect("Benchmark status", statuses, key=f"gis_statuses_{scope_mode}")
-        filtered_hotspots = [
-            h for h in filtered_hotspots
-            if (not counties_selected or h["county_region"] in counties_selected)
-            and (not statuses_selected or h["status"] in statuses_selected)
-        ]
-        if not filtered_hotspots:
-            st.info("No benchmark pins match these filters.")
-
-        state = st.session_state
-        site = state.active_site
-        custom_site = site if site["kind"] == "coordinates" else None
-        selected_hs = site if site["kind"] == "benchmark" else None
-        hotspots_by_id = {h["id"]: h for h in filtered_hotspots}
-        hotspot_dropdown_key = "t2_hs_dropdown"
-        selected_id = site["id"] if site["id"] in hotspots_by_id else None
-        if state.get(hotspot_dropdown_key) != selected_id:
-            state[hotspot_dropdown_key] = selected_id
-
-        def inspect_hotspot(hotspot_id, *, focus_map=False):
-            hotspot = hotspots_by_id.get(hotspot_id)
-            if hotspot is not None:
-                activate_site(benchmark_site(hotspot), focus_map=focus_map)
-
-        def select_dropdown_hotspot():
-            inspect_hotspot(state[hotspot_dropdown_key], focus_map=True)
-            # Reset the chart's own pick state when jumping from the dropdown.
-            state.hotspot_map_revision = state.get("hotspot_map_revision", 0) + 1
 
         if state.get("gis_previous_scope", scope_mode) != scope_mode:
             state.gis_camera_focus = None
         state.gis_previous_scope = scope_mode
 
-        # ── 62 / 38 SPLIT-SCREEN STUDIO LAYOUT ──
-        col_map, col_inspector = st.columns([1.58, 1.0], gap="medium")
+        with st.container(key="gis_explorer", gap=None):
+            map_column, site_column = st.columns([2, 1], gap="small")
 
-        with col_map:
-            # Inline GPS Geocoder & Quick Corridor Bar
-            with st.container(border=True):
-                search_text, search_button = st.columns([3.2, 1.0])
-                with search_text:
-                    place_query = st.text_input(
-                        "Search place name",
-                        placeholder="Nairobi, Moi International Airport, Voi...",
-                        key="t2_place_search",
-                    )
-                with search_button:
-                    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                    place_search_btn = st.button(
-                        "Search",
-                        width="stretch",
-                        icon=":material/search:",
-                        key="btn_t2_place_search",
-                    )
-
-                if place_search_btn:
-                    if place_query.strip():
-                        st.session_state.location_search_results = search_location(place_query)
-                        if not st.session_state.location_search_results:
-                            st.warning("No location matches were found. Try a town, county, or landmark name.", icon=":material/search_off:")
-                    else:
-                        st.session_state.location_search_results = []
-                        st.warning("Enter a place name to search.", icon=":material/info:")
-
-                if st.session_state.location_search_results:
-                    result_labels = [
-                        result["display_name"]
-                        for result in st.session_state.location_search_results
-                    ]
-                    selected_result_label = st.selectbox(
-                        "Search result",
-                        result_labels,
-                        key="t2_place_search_result",
-                    )
-                    selected_result = next(
-                        result
-                        for result in st.session_state.location_search_results
-                        if result["display_name"] == selected_result_label
-                    )
-                    if st.button("Use selected location", type="primary", width="stretch", icon=":material/my_location:", key="btn_t2_use_search_result"):
-                        search_lat = selected_result["latitude"]
-                        search_lon = selected_result["longitude"]
-                        c_site = resolve_coordinate_geotechnics(search_lat, search_lon)
-                        activate_site(coordinate_site(c_site), focus_map=True)
-                        st.rerun()
-
-                g_c1, g_c2, g_c3 = st.columns([1.2, 1.2, 1.6])
-                coordinate_key = f"{st.session_state.coord_lat}_{st.session_state.coord_lon}"
-                with g_c1:
-                    in_lat = st.number_input(
-                        "Latitude (°N)",
-                        min_value=-90.0,
-                        max_value=90.0,
-                        value=float(st.session_state.coord_lat),
-                        format="%.5f",
-                        step=0.01,
-                        key=f"t2_in_lat_{coordinate_key}",
-                    )
-                with g_c2:
-                    in_lon = st.number_input(
-                        "Longitude (°E)",
-                        min_value=-180.0,
-                        max_value=180.0,
-                        value=float(st.session_state.coord_lon),
-                        format="%.5f",
-                        step=0.01,
-                        key=f"t2_in_lon_{coordinate_key}",
-                    )
-                with g_c3:
-                    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                    resolve_btn = st.button(
-                        "Locate & Ingest Site",
-                        type="primary",
-                        width="stretch",
-                        icon=":material/travel_explore:",
-                        key="btn_t2_locate"
-                    )
-
-                # Corridor shortcuts row
-                shortcuts = [
-                    ("Nairobi", -1.2921, 36.8219), ("Samburu", 1.0000, 36.8219),
-                    ("Eldoret", 0.5143, 35.2698), ("Naivasha", -0.7172, 36.4312),
-                    ("Embu", -0.5342, 37.4544), ("Garissa", -0.4532, 39.6461),
-                ]
-                for column, (name, latitude, longitude) in zip(st.columns(6), shortcuts):
-                    if column.button(name, width="stretch", key=f"t2_pill_{name.lower()}"):
-                        resolved = resolve_coordinate_geotechnics(latitude, longitude)
-                        activate_site(coordinate_site(resolved), focus_map=True)
-                        st.rerun()
-
-                if resolve_btn:
-                    with st.spinner(f"Querying environmental providers for ({in_lat:.4f}°N, {in_lon:.4f}°E)..."):
-                        c_site = resolve_coordinate_geotechnics(in_lat, in_lon)
-                        activate_site(coordinate_site(c_site), focus_map=True)
-                        st.rerun()
-
-            # Pin inspection leaves the initial view unchanged so deck.gl keeps the current camera.
-            focus = state.get("gis_camera_focus")
-            if focus:
-                map_lat, map_lon = focus
-                map_zoom, map_pitch = 9.8, 40
-            else:
-                map_lat, map_lon = default_lat, default_lon
-                map_zoom, map_pitch = default_zoom, default_pitch
-
-            view_state = pdk.ViewState(
-                latitude=map_lat,
-                longitude=map_lon,
-                zoom=map_zoom,
-                pitch=map_pitch,
-                bearing=0,
+        with map_column, st.container(key="gis_map_card", border=True, gap=None):
+            render_hotspot_map(
+                filtered, active_hotspot, custom_site, scope_mode, default_camera,
+                style_urls[basemap], show_3d_elevation, inspect_hotspot,
             )
 
-            df_map = pd.DataFrame(filtered_hotspots)
-            df_active = pd.DataFrame([selected_hs] if selected_id else [])
-
-            # Layer 1: Base Hotspot Pins (Interactive Scatterplot)
-            scatter_layer = pdk.Layer(
-                "ScatterplotLayer",
-                id="hotspot-scatter",
-                data=df_map,
-                get_position=["longitude", "latitude"],
-                get_color="color",
-                pickable=True,
-                auto_highlight=True,
-                highlight_color=[250, 204, 21, 220],
-                radius_min_pixels=10,
-                radius_max_pixels=24,
-                stroked=True,
-                filled=True,
-                line_width_min_pixels=2.5,
-                get_line_color=[255, 255, 255, 255],
-            )
-
-            # Layer 2: Active Focused Beacon Ring (Electric Cyan Halo)
-            halo_layer = pdk.Layer(
-                "ScatterplotLayer",
-                id="hotspot-active-halo",
-                data=df_active,
-                get_position=["longitude", "latitude"],
-                get_color=[0, 0, 0, 0],
-                stroked=True,
-                filled=False,
-                radius_min_pixels=18,
-                radius_max_pixels=34,
-                line_width_min_pixels=3.5,
-                get_line_color=[56, 189, 248, 255],
-                pickable=False,
-            )
-
-            # Layer 3: Clean Pill Badges with Site Short Names
-            text_layer = pdk.Layer(
-                "TextLayer",
-                id="hotspot-labels",
-                data=df_map,
-                get_position=["longitude", "latitude"],
-                get_text="short_label",
-                get_size=12,
-                get_color=[255, 255, 255, 255],
-                get_text_anchor="'start'",
-                get_alignment_baseline="'center'",
-                pixel_offset=[14, -1],
-                background=True,
-                get_background_color=[15, 23, 42, 225],
-                background_padding=[4, 7, 4, 7],
-                pickable=True,
-            )
-
-            map_layers = [scatter_layer, halo_layer, text_layer]
-
-            # Optional Layer 4: Custom Queried GPS Target Beacon Layer
-            if custom_site is not None:
-                c_site = custom_site
-                df_custom = pd.DataFrame([{
-                    "latitude": c_site["latitude"],
-                    "longitude": c_site["longitude"],
-                    "name": f"Target: {c_site['county']}",
-                    "county_region": c_site["county"],
-                    "country": c_site["country"],
-                    "elevation_m": c_site["elevation_m"],
-                    "status": "Queried GPS Coordinate",
-                    "soil_mechanical_class": c_site["soil_mechanical_class"],
-                    "climate_rainfall_zone": c_site["climate_rainfall_zone"],
-                    "kpi1": f"Salinity: {c_site['salinity_tier']}",
-                    "kpi2": f"Hazard: {c_site['default_hazard']}",
-                    "citation": c_site["data_sources"],
-                }])
-
-                custom_scatter = pdk.Layer(
-                    "ScatterplotLayer",
-                    id="custom-target-scatter",
-                    data=df_custom,
-                    get_position=["longitude", "latitude"],
-                    get_color=[245, 158, 11, 240],  # Glowing Amber
-                    pickable=True,
-                    auto_highlight=True,
-                    highlight_color=[251, 191, 36, 255],
-                    radius_min_pixels=13,
-                    radius_max_pixels=28,
-                    stroked=True,
-                    filled=True,
-                    line_width_min_pixels=3,
-                    get_line_color=[255, 255, 255, 255],
-                )
-                custom_halo = pdk.Layer(
-                    "ScatterplotLayer",
-                    id="custom-target-halo",
-                    data=df_custom,
-                    get_position=["longitude", "latitude"],
-                    get_color=[0, 0, 0, 0],
-                    stroked=True,
-                    filled=False,
-                    radius_min_pixels=24,
-                    radius_max_pixels=46,
-                    line_width_min_pixels=3.5,
-                    get_line_color=[245, 158, 11, 220],
-                    pickable=False,
-                )
-                custom_text = pdk.Layer(
-                    "TextLayer",
-                    id="custom-target-labels",
-                    data=df_custom,
-                    get_position=["longitude", "latitude"],
-                    get_text="name",
-                    get_size=13,
-                    get_color=[255, 255, 255, 255],
-                    get_text_anchor="'start'",
-                    get_alignment_baseline="'center'",
-                    pixel_offset=[16, -1],
-                    background=True,
-                    get_background_color=[180, 83, 9, 235],
-                    background_padding=[4, 8, 4, 8],
-                    pickable=True,
-                )
-                map_layers.extend([custom_scatter, custom_halo, custom_text])
-
-            # Optional Layer 5: 3D Elevation Columns
-            if show_3d_elevation:
-                column_layer = pdk.Layer(
-                    "ColumnLayer",
-                    id="hotspot-pillars",
-                    data=df_map,
-                    get_position=["longitude", "latitude"],
-                    get_elevation="elevation_m",
-                    elevation_scale=3.5,
-                    radius=1200,
-                    get_fill_color="color",
-                    pickable=False,
-                )
-                map_layers.insert(0, column_layer)
-
-            deck = pdk.Deck(
-                layers=map_layers,
-                initial_view_state=view_state,
-                map_style=selected_style_url,
-                tooltip={
-                    "html": """
-                        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #F8FAFC; background: #0F172A; padding: 12px; border-radius: 8px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 320px;">
-                            <div style="font-weight: 800; font-size: 14px; color: #38BDF8; margin-bottom: 4px;">{name}</div>
-                            <div style="color: #94A3B8; margin-bottom: 6px; font-size: 12px;">{county_region}, {country} &bull; Elev: {elevation_m} m a.s.l.</div>
-                            <div style="margin-bottom: 4px;"><b>Site status:</b> <span style="font-weight: 700;">{status}</span></div>
-                            <div style="margin-bottom: 4px;"><b>USCS Soil Class:</b> {soil_mechanical_class}</div>
-                            <div style="margin-bottom: 4px;"><b>Precipitation Zone:</b> {climate_rainfall_zone}</div>
-                            <div style="margin-bottom: 4px;"><b>Key Metric:</b> {kpi1} | {kpi2}</div>
-                            <div style="font-size: 11px; color: #38BDF8; margin-top: 6px; border-top: 1px solid #334155; padding-top: 4px;"><i>Left-click this pin to inspect engineering parameters.</i></div>
-                        </div>
-                    """,
-                    "style": {"zIndex": "1000"}
-                }
-            )
-
-            revision = st.session_state.get("hotspot_map_revision", 0)
-            deck_chart_key = f"pdk_gis_hotspot_selector_{scope_mode}_{revision}_{tuple(hotspots_by_id)}"
-
-            def select_map_hotspot():
-                selection = st.session_state[deck_chart_key].selection
-                for layer_id in ("hotspot-scatter", "hotspot-labels"):
-                    objects = selection.get("objects", {}).get(layer_id, [])
-                    hotspot_id = objects[0].get("id") if objects and isinstance(objects[0], dict) else None
-                    if isinstance(hotspot_id, str):
-                        inspect_hotspot(hotspot_id)
-                        return
-
-                    indices = selection.get("indices", {}).get(layer_id, [])
-                    if indices and isinstance(indices[0], int) and 0 <= indices[0] < len(filtered_hotspots):
-                        inspect_hotspot(filtered_hotspots[indices[0]]["id"])
-                        return
-
-            with st.container(key="gis_hotspot_map", gap=None):
-                st.pydeck_chart(
-                    deck,
-                    width="stretch",
-                    height=650,
-                    on_select=select_map_hotspot,
-                    selection_mode="single-object",
-                    key=deck_chart_key,
-                )
-                st.html(
-                    """
-                    <script>
-                    (() => {
-                        const map = document.currentScript.closest('.st-key-gis_hotspot_map');
-                        if (!map || map.dataset.contextMenuDisabled) return;
-
-                        map.addEventListener('contextmenu', (event) => event.preventDefault(), { capture: true });
-                        map.dataset.contextMenuDisabled = 'true';
-                    })();
-                    </script>
-                    """,
-                    unsafe_allow_javascript=True,
-                )
-
-            st.caption("Click a pin or label to inspect. Ctrl + drag to tilt or rotate. Scroll to zoom.")
-            legend = {h["status"]: h["color"] for h in hotspots}
-            markers = [
-                f'<span style="color:rgb({",".join(map(str, color[:3]))})">●</span> {status}'
-                for status, color in legend.items()
-            ]
-            st.markdown(" · ".join([*markers, "Cyan ring · active benchmark", "Amber · GPS site"]), unsafe_allow_html=True)
-
-        # ── INSPECTOR & GEOTECHNICAL WORKBENCH (RIGHT ~38%) ──
-        with col_inspector:
-            with st.container(border=True):
-                hotspot_labels = {h["id"]: f"{h['county_region']} · {h['name']}" for h in filtered_hotspots}
-                st.selectbox(
-                    "Jump to benchmark",
-                    list(hotspot_labels),
-                    index=None,
-                    format_func=hotspot_labels.__getitem__,
-                    key=hotspot_dropdown_key,
-                    on_change=select_dropdown_hotspot,
-                    disabled=not hotspot_labels,
-                )
-                if custom_site is not None:
-                    c_res = custom_site
-                    st.markdown(f"#### :material/place: {c_res['county']}, {c_res['country']}")
-                    st.markdown(f"""
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
-                        <span class="studio-badge badge-blue">Elevation: {c_res['elevation_m']} m</span>
-                        <span class="studio-badge badge-amber">GPS: {c_res['latitude']:.4f}°N, {c_res['longitude']:.4f}°E</span>
-                        <span class="studio-badge badge-suitable">Source: {c_res['data_sources']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    if c_res["is_known_hotspot"]:
-                        matched_h = c_res["matched_hotspot"]
-                        st.success(
-                            f"**Known Regional Benchmark ({c_res['distance_to_nearest_km']} km away):** {matched_h['name']}",
-                            icon=":material/verified:"
-                        )
-                        st.caption(f"**Field Summary:** {matched_h['summary_desc']}")
-                    else:
-                        st.info(
-                            f"**Uncomputed Field Site** — Ingested via {c_res['data_sources']}. Nearest pre-computed trial is {c_res['distance_to_nearest_km']} km away.",
-                            icon=":material/public:"
-                        )
-
-                elif selected_hs is not None:
-                    st.markdown(f"#### :material/place: {selected_hs['name']}")
-                    stat_badge = "badge-suitable" if selected_hs['status'] == "Suitable" else "badge-unsuitable"
-                    st.markdown(f"""
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
-                        <span class="studio-badge {stat_badge}">Benchmark status · {selected_hs['status']}</span>
-                        <span class="studio-badge badge-blue">Elevation: {selected_hs['elevation_m']} m</span>
-                        <span class="studio-badge badge-amber">GPS: {selected_hs['latitude']:.4f}°N, {selected_hs['longitude']:.4f}°E</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.caption(f"**Empirical Summary:** {selected_hs['summary_desc']}")
-                    st.caption(f"**Citation:** *{selected_hs['citation']}*")
-
+            with st.container(
+                key="gis_map_footer", horizontal=True, horizontal_alignment="distribute",
+                vertical_alignment="center", gap="xsmall",
+            ):
+                count = len(filtered)
+                if count:
+                    st.caption(
+                        f"{count} benchmark{'s' if count != 1 else ''} · Click a pin to inspect it. Ctrl + drag to tilt or rotate.",
+                        width="content",
+                    )
                 else:
-                    st.info("Select a benchmark pin or locate a GPS site to assess it.")
+                    st.caption("No benchmarks match these filters. Adjust them in Map settings.", width="content")
+                legend = {h["status"]: h["color"] for h in hotspots}
+                markers = [
+                    f'<span><i style="--pin-color:rgb({",".join(map(str, color[:3]))})"></i>{escape(status)}</span>'
+                    for status, color in legend.items()
+                ]
+                markers.extend([
+                    '<span><i class="gis-legend-ring"></i>Active benchmark</span>',
+                    '<span><i style="--pin-color:#f59e0b"></i>GPS site</span>',
+                ])
+                st.html(f'<div class="gis-legend">{"".join(markers)}</div>', width="content")
 
-            if site["kind"] != "manual":
-                with st.container(border=True):
-                    st.markdown("##### :material/tune: Geotechnical parameters")
-                    if custom_site and custom_site.get("notes"):
-                        st.caption(custom_site["notes"])
-                    if custom_site and st.button("Clear GPS site", key="btn_t2_clear"):
-                        activate_site(manual_site())
-                        st.rerun()
-                    render_assessment_inputs("t2", cb_model)
+        with site_column:
+            render_site_details(site)
 
-                active_res = state.current_assessment
-                if active_res:
-                    res_pred = active_res["prediction"]
-                    res_prob = active_res["probability"]
-                    if active_res["is_exclusion"]:
-                        st.warning(f"Screening rule override · {active_res['excl_title']}")
-                    bio = active_res.get("biomechanics") or calculate_biomechanical_metrics(active_res.get("inputs", {}))
-
-                    if res_pred == 1:
-                        st.markdown(f"""
-                        <div class="verdict-banner-suitable" style="padding: 14px 16px; margin-top: 12px; margin-bottom: 0;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span class="studio-badge badge-suitable">SUITABLE</span>
-                                <span style="font-size: 1.35rem; font-weight: 800; color: #14532D;">{res_prob:.1f}% CatBoost suitability score</span>
-                            </div>
-                            <div style="font-weight: 700; color: #14532D; font-size: 0.95rem; margin-top: 6px;">Positive Geotechnical Alignment</div>
-                            <p style="font-size: 0.82rem; color: #166534; margin: 4px 0 0 0; line-height: 1.35;">{bio.get('summary_desc', '')}</p>
-                            <div class="kpi-row" style="margin-top: 8px;">
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">Root Depth</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #166534;">{bio.get('kpi1_val', bio['root_depth'])}</div>
-                                </div>
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">Added Cohesion</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #166534;">{bio.get('kpi2_val', bio['root_cohesion'])}</div>
-                                </div>
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">FoS Boost</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #166534;">{bio.get('kpi3_val', bio['fos_boost'])}</div>
-                                </div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        diag = get_failure_banner_details(active_res)
-                        st.markdown(f"""
-                        <div class="verdict-banner-unsuitable" style="padding: 14px 16px; margin-top: 12px; margin-bottom: 0;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span class="studio-badge badge-unsuitable">{diag['badge']}</span>
-                                <span style="font-size: 1.35rem; font-weight: 800; color: #7F1D1D;">{res_prob:.1f}% CatBoost suitability score</span>
-                            </div>
-                            <div style="font-weight: 700; color: #7F1D1D; font-size: 0.92rem; margin-top: 6px;">{diag['title']}</div>
-                            <p style="font-size: 0.82rem; color: #991B1B; margin: 4px 0 0 0; line-height: 1.35;">{diag['subtitle']}</p>
-                            <div class="kpi-row" style="margin-top: 8px;">
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">{diag['kpi1_title']}</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #991B1B;">{diag['kpi1_val']}</div>
-                                </div>
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">{diag['kpi2_title']}</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #991B1B;">{diag['kpi2_val']}</div>
-                                </div>
-                                <div class="kpi-chip" style="min-width: 90px; padding: 6px 8px;">
-                                    <div class="kpi-chip-title" style="font-size: 0.65rem;">{diag['kpi3_title']}</div>
-                                    <div class="kpi-chip-val" style="font-size: 0.92rem; color: #991B1B;">{diag['kpi3_val']}</div>
-                                </div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    # 1-Click direct report download right here on the map!
-                    if active_res.get("report_md"):
-                        st.download_button(
-                            label="Download Full Geotechnical Report (.md)",
-                            data=active_res["report_md"],
-                            file_name=f"vetiver_site_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                            mime="text/markdown",
-                            icon=":material/download:",
-                            width="stretch",
-                            key="btn_t2_download_report",
-                        )
-
-                    # AI Decision Attribution (SHAP) directly on the map
-                    if active_res.get("exp_df") is not None:
-                        with st.expander("📊 AI Decision Attribution (TreeSHAP)", expanded=False):
-                            chart_data = active_res["exp_df"].set_index("Feature")["SHAP Impact"]
-                            st.bar_chart(chart_data)
-                            st.dataframe(
-                                active_res["exp_df"],
-                                column_config={
-                                    "Feature": "Parameter",
-                                    "Input Value": "Configured",
-                                    "SHAP Impact": st.column_config.NumberColumn("Log-Odds Impact", format="%.4f"),
-                                    "Effect": "Direction",
-                                },
-                                hide_index=True,
-                                width="stretch",
-                            )
-
-                    # Recommended Remediations directly on the map if unsuitable
-                    if res_pred == 0:
-                        with st.expander("🛠️ Recommended Countermeasures & Remediations", expanded=False):
-                            remed = get_two_tier_remediations(active_res)
-                            st.markdown(f"**Targeted Action:** {remed['primary_title']}")
-                            st.caption(remed['primary_mech'])
-                            for proto_text, _ in remed['protocols']:
-                                st.markdown(f"- {proto_text}")
-
-                    if st.button("Save assessment to shortlist", key="gis_save_site", icon=":material/bookmark:"):
-                        state.site_shortlist = {**state.site_shortlist, site["id"]: active_res}
-                        st.success("Assessment saved to the shortlist.")
+        if site["kind"] != "manual":
+            render_site_assessment(site, cb_model)
 
         render_shortlist()
-
-
