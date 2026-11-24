@@ -1,264 +1,181 @@
 import logging
-from html import escape
 from datetime import datetime
 
 import streamlit as st
 
-import config
-from services.report_service import export_chat_markdown
 from services.assessment_service import get_active_site_context
+from services.chat_service import answer_research_question, conversational_reply
+from services.model_service import ChatUnavailable
+from services.report_service import export_chat_markdown
 
 logger = logging.getLogger("vetiver")
 
+PERSONA_LABELS = {
+    "geotechnical": "Geotechnical design",
+    "contractor": "Field operations",
+    "environmental": "Environmental compliance",
+}
 
-def render_excerpts(sources: list[dict]) -> None:
-    for source in sources:
-        with st.expander(f"[{source['index']}] {source['file_name']}"):
-            st.text(source["snippet"])
 
-
-def render_tab_chat(rag_index, ollama_online: bool = True) -> None:
-    st.subheader("Vetiver", anchor=False)
-    st.caption("Ask questions grounded in field trials, geotechnical standards, and your active site conditions.")
-
-    if not ollama_online:
-        st.markdown("""
-        <div style="min-height: 360px; display: flex; align-items: center; justify-content: center;">
-            <div style="width: min(520px, 90%); text-align: center; border: 1px solid #FECACA; background: #FEF2F2; border-radius: 14px; padding: 38px 28px;">
-                <div style="font-family: 'Material Symbols Rounded'; font-size: 56px; line-height: 1; color: #DC2626;">block</div>
-                <div style="font-size: 1.25rem; font-weight: 800; color: #991B1B; margin-top: 14px;">Vetiver AI unavailable</div>
-                <div style="font-size: 0.92rem; color: #7F1D1D; line-height: 1.55; margin-top: 8px;">
-                    The cloud deployment does not include a local Ollama runtime or the Qwen 2.5 3B model.
-                    The literature assistant and RAG chat require both to be running.
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        return
-
-    from rag_engine import (
-        PERSONA_PROMPTS,
-        clean_markdown_formatting,
-        extract_source_metadata,
-        query_rag_custom,
-        validate_citations,
-    )
-
-    # Auto-sanitize and clean legacy messages in session state
-    if "messages" in st.session_state and st.session_state.messages:
-        cleaned_messages = []
-        for m in st.session_state.messages:
-            content_str = m.get("content", "")
-            if isinstance(content_str, str):
-                if "<div class=" in content_str or "citation-card" in content_str:
-                    content_str = content_str.split("<div class=")[0].strip()
-                if m.get("role") == "assistant":
-                    content_str = clean_markdown_formatting(content_str)
-                m["content"] = content_str
-            cleaned_messages.append(m)
-        st.session_state.messages = cleaned_messages
-
-    # 1. Consultant Persona Switcher, Response Style, Export & Reset
-    persona_col, style_col, export_col, clear_col = st.columns([2.4, 1.8, 1.2, 1.0])
-    with persona_col:
-        selected_persona = st.selectbox(
-            "Consultant Persona",
-            options=["geotechnical", "contractor", "environmental"],
-            format_func=lambda x: f"{PERSONA_PROMPTS[x]['title']}",
-            key="selected_consultant_persona"
-        )
-    with style_col:
-        response_style = st.selectbox(
-            "Response Format",
-            options=["concise", "detailed"],
-            format_func=lambda x: "Concise Bullet Points" if x == "concise" else "Comprehensive Report",
-            key="rag_response_style"
-        )
-    with export_col:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if st.session_state.get("messages"):
-            chat_md = export_chat_markdown(st.session_state.messages)
-            st.download_button(
-                label="Export",
-                data=chat_md,
-                file_name=f"vetiver_consultation_memo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                icon=":material/download:",
-                width="stretch",
-                help="Export consultation history with citations as a Markdown engineering memo."
-            )
+def render_message(message: dict) -> None:
+    role = message["role"]
+    with st.chat_message(role, avatar=":material/eco:" if role == "assistant" else None):
+        if role == "user":
+            st.markdown(message["content"])
         else:
-            st.button("Export", disabled=True, icon=":material/download:", width="stretch", help="No messages to export yet")
-    with clear_col:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("Reset Chat", icon=":material/restart_alt:", width="stretch", help="Clear conversation history"):
-            st.session_state.messages = []
-            st.rerun()
+            render_assistant_content(message)
 
-    # 2. Active Field Assessment Context Bridge
+
+def render_assistant_content(message: dict) -> None:
+    # Older sessions embedded source cards in the Markdown.
+    st.markdown(message["content"].split("<div class=", 1)[0].strip())
+    if message.get("site_name"):
+        st.caption(f"Site context · {message['site_name']}")
+    sources = message.get("sources", [])
+    if sources:
+        with st.expander(f"Sources ({len(sources)})", icon=":material/article:"):
+            for source in sources:
+                st.markdown(f"**[{source['index']}]** `{source['file_name']}`")
+                st.text(source["snippet"])
+
+
+def render_welcome(site_context: dict | None) -> None:
+    with st.container(key="vetiver_chat_welcome", gap=None):
+        st.markdown(":material/eco:", text_alignment="center")
+        st.markdown("## How can I help?", text_alignment="center")
+        st.markdown(
+            "Ask about Vetiver, slope stabilization, or your site.",
+            text_alignment="center",
+        )
+        prompts = [
+            "What slope risks should I check at my site?" if site_context else "How does Vetiver stabilize slopes?",
+            "When does Vetiver need structural support?",
+        ]
+        with st.container(horizontal=True, horizontal_alignment="center", gap="xsmall"):
+            for prompt in prompts:
+                st.button(
+                    prompt,
+                    on_click=select_prompt,
+                    args=(prompt,),
+                )
+
+
+def select_prompt(prompt: str) -> None:
+    st.session_state.vetiver_chat_suggestion = prompt
+
+
+def clear_conversation() -> None:
+    st.session_state.messages = []
+    st.session_state.pop("vetiver_chat_suggestion", None)
+
+
+def render_tab_chat(tab) -> None:
     state = st.session_state
-    active_site = None
-    bridge_enabled = False
+    user_input = st.chat_input("Message Vetiver AI", key="vetiver_chat_input")
+    suggestion = state.pop("vetiver_chat_suggestion", "")
+    question = (user_input or suggestion).strip()
 
+    active_site = None
     if state.active_site["kind"] != "manual" or state.current_assessment:
         active_site = get_active_site_context(state.active_site, state.site_inputs, state.current_assessment)
-        prediction = active_site["prediction"]
-        is_suit = prediction == 1
-        badge_cls = "badge-suitable" if is_suit else "badge-risk"
-        badge_text = {1: "SUITABLE", 0: "UNSUITABLE"}.get(prediction, "ASSESSMENT PENDING")
-        score = active_site["probability"]
-        score_text = f" · {score:.1f}% CatBoost suitability score" if score is not None else ""
-        border_col = "#16A34A" if is_suit else "#DC2626"
 
-        st.markdown(f"""
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 3px solid {border_col}; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 0.84rem; color: #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-            <div>
-                <b>Active site</b> · {escape(active_site['location_name'])} ({active_site.get('elevation_m', 'N/A')} m a.s.l.) ·
-                Soil: <b>{active_site.get('soil_mechanical_class', 'N/A')}</b> · 
-                Rainfall: <b>{active_site.get('climate_rainfall_zone', 'N/A')}</b>
-            </div>
-            <span class="studio-badge {badge_cls}">{badge_text}{score_text}</span>
-        </div>
-        """, unsafe_allow_html=True)
+    with tab, st.container(key="vetiver_chat", gap=None):
+        with st.container(
+            key="vetiver_chat_header",
+            horizontal=True,
+            horizontal_alignment="distribute",
+            vertical_alignment="center",
+            gap="small",
+        ):
+            st.markdown("### Vetiver AI", width="content")
+            with st.container(horizontal=True, vertical_alignment="center", gap="xsmall", width="content"):
+                with st.popover("Settings", icon=":material/tune:", type="tertiary"):
+                    persona = st.selectbox(
+                        "Expertise",
+                        list(PERSONA_LABELS),
+                        format_func=PERSONA_LABELS.__getitem__,
+                        key="selected_consultant_persona",
+                    )
+                    response_format = st.selectbox(
+                        "Response length",
+                        ["concise", "detailed"],
+                        format_func=str.capitalize,
+                        key="rag_response_style",
+                    )
+                    include_site = active_site is not None and st.toggle(
+                        "Use active site", key="chat_include_site"
+                    )
+                    export_slot = st.empty()
+                if state.messages or question:
+                    st.button("New chat", icon=":material/add:", on_click=clear_conversation)
 
-        bridge_enabled = st.checkbox(
-            "Include Active Site Parameters in LLM Context",
-            value=True,
-            help="Automatically passes the site's elevation, soil class, and failure limits to the consultant."
-        )
+        site_context = active_site if include_site else None
+        if site_context:
+            st.caption(f"Active site · {site_context['location_name']}")
 
-    # 3. Suggested Action Prompts (Collapsible once conversation starts)
-    has_history = len(st.session_state.messages) > 0
-    site_name_short = active_site.get('location_name', 'Site') if active_site else "Active Site"
-    if len(site_name_short) > 22:
-        site_name_short = site_name_short[:20] + "..."
-    btn1_label = f"Audit Assessment ({site_name_short})" if active_site else "General Slope Stability Design"
+        if not state.messages and not question:
+            render_welcome(site_context)
+            return
 
-    selected_prompt = None
-    with st.expander(":material/flash_on: Suggested Engineering Consultation Prompts", expanded=not has_history):
-        prompt_r1 = st.columns(3)
-        p1 = prompt_r1[0].button(btn1_label, icon=":material/psychology:", width="stretch")
-        p2 = prompt_r1[1].button("Contractor Field Checklist", icon=":material/assignment:", width="stretch")
-        p3 = prompt_r1[2].button("NEMA EIA Non-Invasiveness", icon=":material/verified_user:", width="stretch")
+        with st.container(key="vetiver_chat_history", height=480, border=False, gap="small"):
+            for message in state.messages:
+                render_message(message)
 
-        prompt_r2 = st.columns(3)
-        p4 = prompt_r2[0].button("Wu-Waldron Root Shear (cr)", icon=":material/architecture:", width="stretch")
-        p5 = prompt_r2[1].button("Collapsible Pumice Hydro-Piping", icon=":material/warning:", width="stretch")
-        p6 = prompt_r2[2].button("Fluvial Scour & Flooding Limits", icon=":material/water_drop:", width="stretch")
-
-        if p1:
-            if active_site:
-                selected_prompt = (
-                    f"Perform a comprehensive bio-engineering geotechnical synthesis for the active project site ({active_site.get('location_name', 'Site')}). "
-                    f"Evaluate its soil mechanics ({active_site.get('soil_mechanical_class')}), elevation ({active_site.get('elevation_m')} m), "
-                    f"and assessment status ({badge_text}). Discuss supporting literature and any field verification needed."
-                )
-            else:
-                selected_prompt = "What is the standard geotechnical bio-engineering design methodology for stabilizing cut slopes with Vetiver grass rows under Eurocode 7 standards?"
-        elif p2:
-            selected_prompt = (
-                "Generate an exhaustive contractor field operations checklist for Vetiver slope revetment: "
-                "specify nursery slip quality criteria (minimum tillers, root and leaf trimming lengths), contour trench excavation dimensions, "
-                "hydrogel and organic compost dosing rates, and the mandatory 60-day irrigation and livestock fencing schedule."
-            )
-        elif p3:
-            selected_prompt = (
-                "Provide an official technical statement for NEMA Environmental Impact Assessment (EIA) submission certifying the ecological safety "
-                "and obligate sterility of Chrysopogon zizanioides (Sunshine genotype). Detail why it cannot become an invasive weed, "
-                "and document its root bioconcentration factor (BCF) and translocation factor (TF) for heavy metals."
-            )
-        elif p4:
-            selected_prompt = (
-                "Explain the Wu-Waldron (1977) root reinforcement equation cr = 1.2 * Tr * RAR and how root tensile strength (75–85 MPa) "
-                "translates into effective cohesion increases (c' + cr). How does this affect limit equilibrium Factor of Safety on slopes greater than 35 degrees?"
-            )
-        elif p5:
-            selected_prompt = (
-                "Why do Vetiver bioengineering rows experience severe hydro-piping and subsurface collapse in volcanic pumice soils "
-                "(such as Nakuru, Menengai, or the Great Rift Valley), and what structural soil nailing or geotextile hybrids are required to prevent washouts?"
-            )
-        elif p6:
-            selected_prompt = (
-                "What are the maximum permissible hydraulic shear stress (tau_c) and flow velocity thresholds (m/s) that mature Vetiver hedgerows can resist "
-                "in riverbank and roadside culvert revetments? What are the critical limits for continuous flood submergence?"
-            )
-
-    # 4. Conversation History & Chat Flow
-    if rag_index is None:
-        st.warning("Knowledge base index is not initialized. Ensure documents exist in `knowledge_base/`.", icon=":material/warning:")
-    else:
-        # Chat container ensures ALL messages stay ABOVE the input bar
-        chat_container = st.container()
-
-        # Chat input is placed at the bottom
-        user_query = st.chat_input("Ask about slope shear cohesion (c'), slip depths, nursery slips, or NEMA EIA compliance...")
-        active_query = user_query or selected_prompt
-
-        with chat_container:
-            # 1. Render all past messages
-            for msg in st.session_state.messages:
-                is_user = msg["role"] == "user"
-                if is_user:
-                    with st.chat_message("user", avatar=":material/person:"):
-                        st.markdown(msg["content"])
-                else:
-                    msg_persona = msg.get("persona", selected_persona)
-                    p_info = PERSONA_PROMPTS.get(msg_persona, PERSONA_PROMPTS["geotechnical"])
-                    p_icon = p_info.get("icon", ":material/psychology:")
-
-                    with st.chat_message("assistant", avatar=p_icon):
-                        st.caption(f":material/verified: **{p_info['title']}** · *{p_info['role_desc']}*")
-                        if msg.get("site_name"):
-                            st.caption(f"Site context · {msg['site_name']}")
-                        st.markdown(clean_markdown_formatting(msg["content"]))
-                        render_excerpts(msg.get("sources", []))
-
-            # 2. Render newly active query inside container (ABOVE the chat input)
-            if active_query:
-                site_ctx_for_call = active_site if bridge_enabled else None
+            if question:
+                reply = conversational_reply(question)
+                site = site_context if reply is None else None
                 site_key = (
-                    (state.active_site["id"], tuple(state.site_inputs.items()), site_ctx_for_call["probability"])
-                    if site_ctx_for_call else None
+                    (state.active_site["id"], tuple(state.site_inputs.items()), site["probability"])
+                    if site else None
                 )
-                st.session_state.messages.append({"role": "user", "content": active_query, "site_key": site_key})
-                with st.chat_message("user", avatar=":material/person:"):
-                    st.markdown(active_query)
+                history = [
+                    message for message in state.messages
+                    if message.get("site_key") == site_key and not message.get("conversational")
+                ]
+                user_message = {
+                    "role": "user",
+                    "content": question,
+                    "site_key": site_key,
+                    "conversational": reply is not None,
+                }
+                render_message(user_message)
 
-                p_info = PERSONA_PROMPTS.get(selected_persona, PERSONA_PROMPTS["geotechnical"])
-                p_icon = p_info.get("icon", ":material/psychology:")
+                sources = []
+                with st.chat_message("assistant", avatar=":material/eco:"):
+                    if reply is None:
+                        with st.spinner("Searching Vetiver research…"):
+                            try:
+                                reply, sources = answer_research_question(
+                                    question,
+                                    persona=persona,
+                                    response_format=response_format,
+                                    site_context=site,
+                                    history=history,
+                                )
+                            except ChatUnavailable as exc:
+                                logger.warning("Vetiver chat unavailable: %s", exc, exc_info=True)
+                                reply = str(exc)
+                            except Exception:
+                                logger.exception("Vetiver research question failed")
+                                reply = "Vetiver AI couldn't complete that request. Please try again."
 
-                with st.chat_message("assistant", avatar=p_icon):
-                    st.caption(f":material/verified: **{p_info['title']}** · *{p_info['role_desc']}*")
-                    response_placeholder = st.empty()
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": reply,
+                        "sources": sources,
+                        "site_key": site_key,
+                        "site_name": site["location_name"] if site else None,
+                        "conversational": user_message["conversational"],
+                    }
+                    state.messages.extend((user_message, assistant_message))
+                    render_assistant_content(assistant_message)
 
-                    try:
-                        with st.spinner("Analyzing empirical literature & site constraints..."):
-                            response = query_rag_custom(
-                                index=rag_index,
-                                query_str=active_query,
-                                persona_key=selected_persona,
-                                site_context=site_ctx_for_call,
-                                conversation_history=[m for m in st.session_state.messages if m.get("site_key") == site_key],
-                                similarity_top_k=config.RAG_SIMILARITY_TOP_K,
-                                response_mode=response_style,
-                            )
-                            full_response = clean_markdown_formatting("".join(response.response_gen))
-                            full_response, sources = validate_citations(full_response, extract_source_metadata(response))
-                        response_placeholder.markdown(full_response)
-                        render_excerpts(sources)
-
-                        # Save to state
-                        st.session_state.messages.append({
-                            "role": "assistant",
-                            "persona": selected_persona,
-                            "content": full_response,
-                            "sources": sources,
-                            "site_key": site_key,
-                            "site_name": site_ctx_for_call["location_name"] if site_ctx_for_call else None,
-                        })
-
-                    except Exception as exc:
-                        logger.error("RAG query failed: %s", exc, exc_info=True)
-                        err_msg = "An error occurred while retrieving literature context. Please check Ollama and try again."
-                        response_placeholder.error(err_msg, icon=":material/error:")
-                        st.session_state.messages.append({"role": "assistant", "persona": selected_persona, "content": err_msg})
+        export_slot.download_button(
+            "Download conversation",
+            data=export_chat_markdown(state.messages),
+            file_name=f"vetiver_chat_{datetime.now():%Y%m%d_%H%M%S}.md",
+            mime="text/markdown",
+            icon=":material/download:",
+            on_click="ignore",
+            width="stretch",
+        )

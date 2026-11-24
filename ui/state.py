@@ -53,6 +53,14 @@ def baseline_inputs(site: dict) -> dict:
 
 
 def init_session_state() -> None:
+    # Retain chat settings even when their widgets are hidden on another tab.
+    for key, default in (
+        ("selected_consultant_persona", "geotechnical"),
+        ("rag_response_style", "concise"),
+        ("chat_include_site", True),
+    ):
+        st.session_state[key] = st.session_state.get(key, default)
+
     defaults = {
         "messages": [],
         "active_site": manual_site(),

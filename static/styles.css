@@ -227,151 +227,209 @@
         box-shadow: 0 3px 8px rgba(22, 163, 74, 0.32) !important;
     }
 
-    /* =======================================================
-       MODERN STUDIO CHAT INTERFACE DESIGN SYSTEM
-       ======================================================= */
-    
-    /* Modern Streamlit Chat Message Styling */
-    /* Outer container: completely transparent with NO border to eliminate double boundaries */
-    div[data-testid="stChatMessage"] {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-        margin: 0 0 16px 0 !important;
-        width: 100% !important;
+    /* Vetiver AI chat */
+    :is(.stApp, [data-testid="stAppViewContainer"]):has(.st-key-vetiver_chat)
+        :is([data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"],
+            [data-testid="stHeader"]) {
+        display: none;
     }
 
-    /* USER MESSAGE: Pushed to the RIGHT (row-reverse) */
-    div[aria-label="Chat message from user"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
-    div[data-testid="stChatMessage"]:has([aria-label*="user"]) {
-        display: flex !important;
-        flex-direction: row-reverse !important;
-        justify-content: flex-start !important;
-        align-items: flex-start !important;
-        gap: 10px !important;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        margin-bottom: 14px !important;
-        width: 100% !important;
-    }
-    /* Single clean right-aligned user bubble */
-    div[aria-label="Chat message from user"] div[data-testid="stChatMessageContent"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"],
-    div[data-testid="stChatMessage"]:has([aria-label*="user"]) div[data-testid="stChatMessageContent"] {
-        background-color: #EFF6FF !important;
-        border: 1.5px solid #BFDBFE !important;
-        border-radius: 18px 4px 18px 18px !important;
-        padding: 10px 16px !important;
-        max-width: 72% !important;
-        box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08) !important;
-    }
-    div[aria-label="Chat message from user"] div[data-testid="stChatMessageContent"] *,
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid="stChatMessageContent"] * {
-        color: #1E3A8A !important;
-        font-size: 0.94rem !important;
-        line-height: 1.55 !important;
-    }
-    div[aria-label="Chat message from user"] div[data-testid*="Avatar"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) div[data-testid*="Avatar"],
-    div[data-testid="stChatMessage"]:has([aria-label*="user"]) div[data-testid*="Avatar"] {
-        background-color: #DBEAFE !important;
-        color: #1D4ED8 !important;
-        border: 1px solid #BFDBFE !important;
-        border-radius: 50% !important;
-        flex-shrink: 0 !important;
+    [data-testid="stMainBlockContainer"]:has(.st-key-vetiver_chat) {
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.25rem !important;
     }
 
-    /* ASSISTANT MESSAGE: Pushed to the LEFT (row) */
-    div[aria-label="Chat message from assistant"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]),
-    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        align-items: flex-start !important;
-        gap: 12px !important;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        margin-bottom: 18px !important;
-        width: 100% !important;
-    }
-    /* Single clean left-aligned assistant card */
-    div[aria-label="Chat message from assistant"] div[data-testid="stChatMessageContent"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"],
-    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) div[data-testid="stChatMessageContent"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-left: 4px solid #16A34A !important;
-        border-radius: 4px 18px 18px 18px !important;
-        padding: 14px 18px !important;
-        max-width: 85% !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
-    }
-    div[aria-label="Chat message from assistant"] div[data-testid="stChatMessageContent"] *,
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid="stChatMessageContent"] * {
-        color: #1E293B !important;
-        font-size: 0.94rem !important;
-        line-height: 1.65 !important;
+    .st-key-active_workspace_tab:has(.st-key-vetiver_chat) [role="tablist"] {
+        max-width: 68rem;
+        margin-inline: auto;
+        gap: clamp(0.2rem, 2vw, 1rem) !important;
+        border-bottom: 1px solid #e5ebe6 !important;
     }
 
-    /* Markdown List & Bullet Point Typography inside chat messages */
-    div[data-testid="stChatMessageContent"] ul,
-    div[data-testid="stChatMessageContent"] ol {
-        margin: 8px 0 10px 0 !important;
-        padding-left: 22px !important;
-    }
-    div[data-testid="stChatMessageContent"] li {
-        margin-bottom: 8px !important;
-        line-height: 1.6 !important;
-        color: #1E293B !important;
-    }
-    div[data-testid="stChatMessageContent"] li strong {
-        color: #0F172A !important;
-        font-weight: 700 !important;
-    }
-    div[data-testid="stChatMessageContent"] p {
-        margin-bottom: 8px !important;
-        line-height: 1.65 !important;
-    }
-    div[aria-label="Chat message from assistant"] div[data-testid*="Avatar"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) div[data-testid*="Avatar"],
-    div[data-testid="stChatMessage"]:has([aria-label*="assistant"]) div[data-testid*="Avatar"] {
-        background-color: #DCFCE7 !important;
-        color: #15803D !important;
-        border: 1px solid #86EFAC !important;
-        border-radius: 50% !important;
-        flex-shrink: 0 !important;
+    .st-key-vetiver_chat {
+        --chat-ink: #172820;
+        --chat-muted: #596b61;
+        --chat-green: #24754e;
+        --chat-border: #e1e9e3;
+        max-width: 53rem;
+        margin-inline: auto;
+        padding: 0.15rem clamp(0.2rem, 2vw, 1.25rem) 0;
     }
 
-    /* Floating Chat Input with Smooth Focus Ring */
-    div[data-testid="stChatInput"] {
-        border-radius: 28px !important;
-        border: 1.5px solid #CBD5E1 !important;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
-        background-color: #FFFFFF !important;
-        padding: 4px 10px !important;
-        transition: all 0.2s ease-in-out !important;
+    .st-key-vetiver_chat_header {
+        min-height: 3.5rem;
+        padding-block: 0.35rem;
+        border-bottom: 1px solid var(--chat-border);
     }
-    div[data-testid="stChatInput"]:focus-within {
-        border-color: #16A34A !important;
-        box-shadow: 0 4px 24px rgba(22, 163, 74, 0.18) !important;
+
+    .st-key-vetiver_chat_header h3 {
+        color: var(--chat-ink);
+        font-size: 1.16rem;
+        font-weight: 680;
+        letter-spacing: -0.025em;
+        padding: 0;
     }
-    div[data-testid="stChatInput"] textarea {
-        font-size: 0.92rem !important;
-        color: #1E293B !important;
-        line-height: 1.5 !important;
+
+    .st-key-vetiver_chat_header h3 a {
+        display: none;
     }
-    div[data-testid="stChatInput"] button {
-        border-radius: 9999px !important;
-        background-color: #16A34A !important;
-        color: #FFFFFF !important;
-        transition: transform 0.15s ease !important;
+
+    .st-key-vetiver_chat_header button,
+    .st-key-vetiver_chat_welcome button {
+        border-color: var(--chat-border);
+        color: var(--chat-ink);
     }
-    div[data-testid="stChatInput"] button:hover {
-        background-color: #15803D !important;
-        transform: scale(1.06) !important;
+
+    .st-key-vetiver_chat_header button:hover,
+    .st-key-vetiver_chat_welcome button:hover {
+        color: var(--chat-green);
+        border-color: #aac8b5;
+        background: #f4f9f5;
+    }
+
+    .st-key-vetiver_chat_welcome {
+        min-height: min(28rem, 58dvh);
+        justify-content: center;
+        padding-block: 2.25rem;
+    }
+
+    .st-key-vetiver_chat_welcome [data-testid="stMarkdownContainer"] p {
+        color: var(--chat-muted);
+        margin-bottom: 0.65rem;
+    }
+
+    .st-key-vetiver_chat_welcome [data-testid="stMarkdownContainer"] p > span {
+        display: inline-grid;
+        place-items: center;
+        width: 3.4rem;
+        height: 3.4rem;
+        border: 1px solid #dcebe2;
+        border-radius: 1.15rem;
+        background: #ecf6ef;
+        color: var(--chat-green);
+        font-size: 1.65rem;
+    }
+
+    .st-key-vetiver_chat_welcome h2 {
+        color: var(--chat-ink);
+        font-size: clamp(2rem, 5vw, 3rem);
+        font-weight: 650;
+        letter-spacing: -0.05em;
+        padding: 0.25rem 0 0.65rem;
+    }
+
+    .st-key-vetiver_chat_welcome h2 a {
+        display: none;
+    }
+
+    .st-key-vetiver_chat_welcome [data-testid="stButton"] > button {
+        border-radius: 999px !important;
+        padding: 0.4rem 0.9rem;
+        background: #fff;
+    }
+
+    .st-key-vetiver_chat > [data-testid="stLayoutWrapper"]:has(> .st-key-vetiver_chat_history) {
+        flex-basis: max(10rem, calc(100dvh - 15.5rem));
+    }
+
+    .st-key-vetiver_chat_history {
+        padding: 1.3rem 0.2rem 1rem;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stChatMessage"] {
+        padding: 0;
+        gap: 0.75rem;
+        align-items: flex-start;
+        background: transparent;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stChatMessageContent"] {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stChatMessageContent"] p,
+    .st-key-vetiver_chat_history [data-testid="stChatMessageContent"] li {
+        line-height: 1.65;
+    }
+
+    .st-key-vetiver_chat_history [data-testid^="stChatMessageAvatar"] {
+        flex: 0 0 auto;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.7rem;
+        background: #eaf5ed;
+        color: var(--chat-green);
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stChatMessageAvatarUser"] {
+        display: none;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"])
+        [data-testid="stChatMessageContent"] {
+        flex: 0 1 auto;
+        width: fit-content;
+        max-width: min(85%, 39rem);
+        margin-inline: auto 0;
+        padding: 0.65rem 1rem;
+        border-radius: 1.15rem 1.15rem 0.4rem 1.15rem;
+        background: #eef4ef;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stExpander"] {
+        margin-top: 0.2rem;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stExpander"] details {
+        border-color: var(--chat-border);
+        border-radius: 0.65rem;
+    }
+
+    .st-key-vetiver_chat_history [data-testid="stText"] {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    [data-testid="stBottomBlockContainer"]:has(.st-key-vetiver_chat_input) {
+        max-width: 53rem !important;
+        padding-inline: clamp(0.9rem, 3vw, 1.5rem) !important;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+    }
+
+    .st-key-vetiver_chat_input [data-testid="stChatInput"] > div {
+        border: 1px solid #d9e5dc;
+        border-radius: 1.55rem;
+        background: #fff;
+        box-shadow: 0 3px 14px rgb(27 61 41 / 6%);
+    }
+
+    .st-key-vetiver_chat_input [data-testid="stChatInput"] > div:focus-within {
+        border-color: #68a582;
+        box-shadow: 0 0 0 3px #e8f3eb;
+    }
+
+    .st-key-vetiver_chat_input textarea {
+        color: #172820;
+    }
+
+    .st-key-vetiver_chat_input button {
+        border-radius: 50%;
+    }
+
+    .st-key-vetiver_chat_input button:enabled {
+        background: #24754e;
+        color: #fff;
+    }
+
+    .st-key-vetiver_chat_input button:enabled:hover {
+        background: #1c623f;
+        color: #fff;
+    }
+
+    @media (max-width: 600px) {
+        .st-key-active_workspace_tab:has(.st-key-vetiver_chat) [role="tab"] {
+            padding-inline: 0.55rem !important;
+            font-size: 0.82rem !important;
+        }
     }

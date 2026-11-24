@@ -16,7 +16,7 @@ from services.assessment_service import (
     get_active_site_context,
 )
 from services.model_service import (
-    check_ollama_health,
+    check_ollama_models,
     load_catboost,
     load_regional_hotspots,
     initialize_rag,
@@ -32,7 +32,7 @@ __all__ = [
     "export_chat_markdown",
     "run_assessment",
     "get_active_site_context",
-    "check_ollama_health",
+    "check_ollama_models",
     "load_catboost",
     "load_regional_hotspots",
     "initialize_rag",

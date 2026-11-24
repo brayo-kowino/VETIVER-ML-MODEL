@@ -1,11 +1,9 @@
 import os
-from datetime import datetime
 import streamlit as st
 import config
-from services.report_service import export_chat_markdown
 
 
-def render_sidebar(cb_model, ollama_online: bool | None, query_engine) -> None:
+def render_sidebar(cb_model) -> None:
     """Render friendly sidebar readiness, guide, and collapsed developer telemetry."""
     with st.sidebar:
         st.subheader(":material/eco: Vetiver AI Platform")
@@ -18,12 +16,7 @@ def render_sidebar(cb_model, ollama_online: bool | None, query_engine) -> None:
         else:
             ml_card = ("offline", "error", "ML Model", "Offline")
 
-        if ollama_online and query_engine:
-            ai_card = ("ready", "smart_toy", "Vetiver AI", "Ready")
-        elif ollama_online is None:
-            ai_card = ("idle", "smart_toy", "Vetiver AI", "On demand")
-        else:
-            ai_card = ("offline", "power_off", "Vetiver AI", "Offline")
+        ai_card = ("idle", "smart_toy", "Vetiver AI", "On demand")
 
         def readiness_card(card):
             tone, icon, title, status = card
@@ -38,18 +31,6 @@ def render_sidebar(cb_model, ollama_online: bool | None, query_engine) -> None:
                     '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
                     '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>'
                     '<path d="M7.5 12.2l3 3 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-                    '</svg>'
-                )
-            elif icon == "power_off":
-                icon_svg = (
-                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
-                    '<path d="M12 2v10M7.1 5.8a8 8 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
-                    '</svg>'
-                )
-            elif icon == "sync":
-                icon_svg = (
-                    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
-                    '<path d="M20 11a8 8 0 0 0-13.7-5.6L4 7.7M4 3v4.7h4.7M4 13a8 8 0 0 0 13.7 5.6l2.3-2.3M20 21v-4.7h-4.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
                     '</svg>'
                 )
             elif icon == "error":
@@ -99,21 +80,6 @@ def render_sidebar(cb_model, ollama_online: bool | None, query_engine) -> None:
         )
 
         st.divider()
-        # Session Actions
-        if st.session_state.get("messages"):
-            chat_md = export_chat_markdown(st.session_state.messages)
-            st.download_button(
-                label="Download Chat History (.md)",
-                data=chat_md,
-                file_name=f"vetiver_chat_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                icon=":material/download:",
-                width="stretch",
-            )
-            if st.button("Clear Chat Conversation", icon=":material/delete_sweep:", width="stretch"):
-                st.session_state.messages = []
-                st.rerun()
-
         # Advanced Developer Specs (Cleanly Collapsed)
         with st.expander("Advanced Engine Specs", expanded=False):
             st.caption(

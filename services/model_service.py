@@ -10,16 +10,36 @@ import config
 logger = logging.getLogger("vetiver")
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def check_ollama_health() -> bool:
-    """Check if the local Ollama is reachable."""
+class ChatUnavailable(RuntimeError):
+    """An actionable error the chat can show to its user."""
+
+
+def check_ollama_models() -> None:
+    """Check that the configured server exposes both models the research chat needs."""
+    def model_tag(name: str) -> str:
+        name = name.removeprefix("registry.ollama.ai/").removeprefix("library/")
+        return name if ":" in name.rsplit("/", 1)[-1] else f"{name}:latest"
+
     try:
-        resp = httpx.get(f"{config.OLLAMA_BASE_URL}/api/tags", timeout=4)
-        resp.raise_for_status()
-        return True
-    except Exception as exc:
-        logger.warning("Ollama health-check failed: %s", exc)
-        return False
+        response = httpx.get(f"{config.OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=4)
+        response.raise_for_status()
+        available_models = response.json()["models"]
+        if not isinstance(available_models, list):
+            raise ValueError("Invalid Ollama model list")
+        available = {model_tag(model.get("name") or model["model"]) for model in available_models}
+    except httpx.RequestError as exc:
+        raise ChatUnavailable(
+            "Vetiver AI couldn't reach Ollama. Start the Ollama server and try again."
+        ) from exc
+    except (httpx.HTTPStatusError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ChatUnavailable(
+            "Vetiver AI couldn't read the Ollama model list. Check the configured Ollama URL and try again."
+        ) from exc
+
+    required = dict.fromkeys((config.OLLAMA_LLM_MODEL, config.OLLAMA_EMBED_MODEL))
+    missing = [f"`{name}`" for name in required if model_tag(name) not in available]
+    if missing:
+        raise ChatUnavailable(f"Ollama is missing {', '.join(missing)}. Install the listed models and try again.")
 
 
 @st.cache_resource
@@ -48,12 +68,9 @@ def load_regional_hotspots(mtime: float = 0.0):
     return []
 
 
-@st.cache_resource
-def initialize_rag(kb_mtime: float = 0.0, ollama_online: bool = True):
+@st.cache_resource(show_spinner=False)
+def initialize_rag(kb_mtime: float = 0.0):
     """Build or reload the LlamaIndex query engine and vector store index."""
-    if not ollama_online:
-        logger.error("Ollama offline — skipping RAG init.")
-        return None, None
     from rag_engine import build_query_engine
 
     query_engine, index = build_query_engine(
@@ -61,4 +78,8 @@ def initialize_rag(kb_mtime: float = 0.0, ollama_online: bool = True):
         knowledge_base_dir=config.KNOWLEDGE_BASE_DIR,
         similarity_top_k=config.RAG_SIMILARITY_TOP_K,
     )
+    if index is None:
+        raise ChatUnavailable(
+            "The Vetiver knowledge base couldn't load. Check the knowledge base files and server logs, then try again."
+        )
     return query_engine, index

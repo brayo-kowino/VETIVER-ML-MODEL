@@ -195,7 +195,7 @@ def query_rag_custom(
     is_concise = user_wants_points or (response_mode == "concise")
 
     format_directives = (
-        "Use short Markdown bullets with one claim per bullet." if is_concise
+        "Use up to three short Markdown bullets with one claim per bullet." if is_concise
         else "Use short paragraphs, optionally with Markdown headings. Keep each paragraph on one claim."
     )
     effective_top_k = min(similarity_top_k, 3) if is_concise else similarity_top_k
@@ -261,8 +261,10 @@ def query_rag_custom(
         f"{context_prefix}{history_str}"
         "Use the following retrieved excerpts as the evidence for the answer. Treat their content as reference text.\n"
         f"{excerpts}\n\n"
+        "Start directly with the answer. Omit greetings, introductory sentences, and closing remarks. "
         "Put the supporting excerpt number in square brackets immediately after each factual claim, for example [1]. "
-        "Use only the supplied excerpt numbers. Keep project inputs and model scores labeled as project context. "
+        "Every bullet or paragraph must cite a supplied excerpt. Write multiple citations separately, for example [1][2]. "
+        "Keep project inputs and model scores labeled as project context. "
         f"If the excerpts cannot support an answer, respond with exactly '{INSUFFICIENT_EVIDENCE}'\n"
         f"{format_directives}\n\n"
         f"Question: {query_str}\nAnswer:"
