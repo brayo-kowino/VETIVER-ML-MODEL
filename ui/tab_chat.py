@@ -10,12 +10,6 @@ from services.report_service import export_chat_markdown
 
 logger = logging.getLogger("vetiver")
 
-PERSONA_LABELS = {
-    "geotechnical": "Geotechnical design",
-    "contractor": "Field operations",
-    "environmental": "Environmental compliance",
-}
-
 
 def render_message(message: dict) -> None:
     role = message["role"]
@@ -90,12 +84,6 @@ def render_tab_chat(tab) -> None:
             st.markdown("### Vetiver AI", width="content")
             with st.container(horizontal=True, vertical_alignment="center", gap="xsmall", width="content"):
                 with st.popover("Settings", icon=":material/tune:", type="tertiary"):
-                    persona = st.selectbox(
-                        "Expertise",
-                        list(PERSONA_LABELS),
-                        format_func=PERSONA_LABELS.__getitem__,
-                        key="selected_consultant_persona",
-                    )
                     response_format = st.selectbox(
                         "Response length",
                         ["concise", "detailed"],
@@ -147,7 +135,6 @@ def render_tab_chat(tab) -> None:
                             try:
                                 reply, sources = answer_research_question(
                                     question,
-                                    persona=persona,
                                     response_format=response_format,
                                     site_context=site,
                                     history=history,

@@ -28,6 +28,13 @@ logger = logging.getLogger("vetiver.rag")
 
 # ── STAKEHOLDER CONSULTANT PERSONAS ─────────────────────────────────────────
 PERSONA_PROMPTS = {
+    "general": {
+        "role_desc": "research assistant",
+        "directives": (
+            "Let the question guide the answer. Address engineering, field operations, or "
+            "environmental considerations as relevant and supported by the supplied evidence."
+        ),
+    },
     "geotechnical": {
         "title": "Geotechnical & Civil Design",
         "icon": ":material/engineering:",

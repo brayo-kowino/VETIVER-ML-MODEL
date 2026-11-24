@@ -28,7 +28,6 @@ def conversational_reply(question: str) -> str | None:
 def answer_research_question(
     question: str,
     *,
-    persona: str,
     response_format: str,
     site_context: dict | None,
     history: list[dict],
@@ -54,7 +53,7 @@ def answer_research_question(
         response = query_rag_custom(
             index=index,
             query_str=question,
-            persona_key=persona,
+            persona_key="general",
             site_context=site_context,
             conversation_history=history,
             response_mode=response_format,
