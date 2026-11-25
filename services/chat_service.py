@@ -22,7 +22,7 @@ def conversational_reply(question: str) -> str | None:
     check_in = r"(?:how (?:are you(?: doing)?|is it going)|how's it going)"
     if re.fullmatch(rf"{greeting}(?: {check_in})?|{check_in}", text):
         return "Hi! How can I help you today?"
-    if re.fullmatch(r"(?:thanks|thank you)(?: so much| very much| vetiver(?: ai)?)?", text):
+    if re.fullmatch(r"(?:thanks|thank you|okay)(?: so much| very much| vetiver(?: ai)?)?", text):
         return "You're welcome!"
     if text in {"who are you", "what can you do", "how can you help", "help"}:
         return (
